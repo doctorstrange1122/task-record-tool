@@ -2295,7 +2295,7 @@
       return Promise.resolve(false);
     }
     if (st === 'denied') {
-      if (!silent) toast('通知权限已被拒绝，请在系统设置中允许本浏览器通知');
+      if (!silent) openPermissionHelp();
       return Promise.resolve(false);
     }
 
@@ -2406,11 +2406,19 @@
         }
       } else if (b.isHarmony) {
         html = '鸿蒙手机（华为 / 鸿蒙浏览器）：<br>' +
-               '1. 设置 → 应用 → 应用管理 → 找到你的浏览器<br>' +
-               '2. 电池 → 选「<strong>允许后台运行</strong>」或「不受限制」<br>' +
-               '3. 流量管理 → 开启<strong>后台数据</strong><br>' +
-               '4. 通知管理 → 允许通知，并开启<strong>锁屏通知</strong><br>' +
-               '5. 多任务界面找到本工具，<strong>下拉加锁</strong>避免被清理';
+               '<strong>第一步 · 先恢复网站通知权限</strong>（这层被拒就无法开启）<br>' +
+               '1. 点浏览器底部<strong>菜单</strong>（⚙ 或 ⋮）→「<strong>设置</strong>」<br>' +
+               '2. 找「<strong>网站设置</strong>」或「<strong>权限管理</strong>」<br>' +
+               '3. 找到本站（doctorstrange1122.github.io）<br>' +
+               '4. 把「<strong>通知</strong>」改为<strong>允许</strong><br>' +
+               '若列表里没有本站：选「<strong>清除全部网站数据 / 重置权限</strong>」，' +
+               '再回本页重新开启，这次会重新弹询问<br><br>' +
+               '<strong>第二步 · 保证后台能收到（可选）</strong><br>' +
+               '5. 设置 → 应用 → 应用管理 → 浏览器<br>' +
+               '6. 电池 → 选「<strong>允许后台运行</strong>」或「不受限制」<br>' +
+               '7. 流量管理 → 开启<strong>后台数据</strong><br>' +
+               '8. 通知管理 → 开启<strong>锁屏通知</strong><br>' +
+               '9. 多任务界面找到本工具，<strong>下拉加锁</strong>避免被清理';
       } else if (b.isAndroid || b.isMi || b.isOppo || b.isVivo || b.isSamsung) {
         html = '安卓手机：<br>' +
                '1. 设置 → 应用 → 你的浏览器 → 电池 → 选「<strong>不受限制 / 允许后台运行</strong>」<br>' +
@@ -2438,6 +2446,180 @@
   }
 
   /** 发送一条测试通知，验证「服务端 -> 推送通道 -> 本机」链路 */
+  /* ---------- 网站通知权限被拒时的恢复指引 ----------
+     说明两层权限的区别：
+     1. 系统层：手机「设置 → 应用 → 浏览器 → 通知」（用户常已开启）
+     2. 浏览器层：浏览器对「本网站」的通知权限（被拒的是这一层） */
+  function openPermissionHelp() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '网站通知权限被拒';
+      sheet.appendChild(h);
+
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.textAlign = 'left';
+      p.innerHTML = '被拒的是<strong>浏览器对本网站</strong>的通知权限' +
+                    '（不是手机系统设置里那层，那层你多半已开启）。<br><br>' +
+                    '通常是之前弹权限询问时点过「拒绝」，浏览器就记住了，' +
+                    '之后不会再弹询问。按下面步骤恢复：';
+      sheet.appendChild(p);
+
+      var b = detectBrowser();
+      var steps = document.createElement('p');
+      steps.className = 'hint';
+      steps.style.textAlign = 'left';
+      var html = '';
+      if (b.isHarmony) {
+        html = '华为 / 鸿蒙浏览器：<br>' +
+               '1. 点底部<strong>菜单</strong>（⚙ 或 ⋮）→「<strong>设置</strong>」<br>' +
+               '2. 找「<strong>网站设置</strong>」或「<strong>权限管理</strong>」<br>' +
+               '3. 找到本站（doctorstrange1122.github.io）<br>' +
+               '4. 把「<strong>通知</strong>」改为<strong>允许</strong><br><br>' +
+               '找不到本站？在「网站设置」里选「<strong>清除全部网站数据/重置权限</strong>」，' +
+               '然后回到本页重新点「开启后台提醒」，这次会重新弹出询问，选「允许」。';
+      } else if (b.isIOS) {
+        html = 'iPhone（Safari）：<br>' +
+               '1. 系统「设置」→「Safari 浏览器」→「高级」→「网站数据」<br>' +
+               '2. 找到本站并<strong>移除</strong><br>' +
+               '3. 回到本页重新点「开启后台提醒」，弹询问时选「允许」';
+      } else {
+        html = '通用步骤：<br>' +
+               '1. 点地址栏左侧的<strong>锁图标</strong>（或 ⚙）<br>' +
+               '2. 进入「<strong>网站设置 / 权限</strong>」<br>' +
+               '3. 把「<strong>通知</strong>」改为<strong>允许</strong><br>' +
+               '4. 刷新本页后重新开启';
+      }
+      steps.innerHTML = html;
+      sheet.appendChild(steps);
+
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn btn-primary';
+      retry.textContent = '我已改好，重新检测';
+      retry.style.width = '100%';
+      retry.style.marginTop = '6px';
+      retry.addEventListener('click', function () {
+        close();
+        var st = pushStatus();
+        if (st === 'ok') { enablePush(false); }
+        else if (st === 'denied') { toast('仍是被拒状态，请确认已改为允许并刷新本页'); }
+        else { enablePush(false); }
+      });
+      sheet.appendChild(retry);
+
+      var diag = document.createElement('button');
+      diag.type = 'button';
+      diag.className = 'btn btn-ghost';
+      diag.textContent = '打开推送诊断';
+      diag.style.width = '100%';
+      diag.style.marginTop = '8px';
+      diag.addEventListener('click', function () { close(); openPushDiagnostics(); });
+      sheet.appendChild(diag);
+    });
+  }
+
+  /* ---------- 推送诊断：把链路上每一环的真实状态显示出来 ---------- */
+  function openPushDiagnostics() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '推送诊断';
+      sheet.appendChild(h);
+
+      var log = document.createElement('p');
+      log.className = 'hint';
+      log.style.textAlign = 'left';
+      log.style.cssText += 'white-space:pre-wrap;font-size:12px;max-height:300px;overflow:auto;';
+      log.textContent = '检测中…';
+      sheet.appendChild(log);
+
+      function line(s) { log.textContent += '\n' + s; }
+
+      (function run() {
+        var b = detectBrowser();
+        line('浏览器: ' + (navigator.userAgent || '').slice(0, 60));
+        line(b.isHarmony ? '识别为: 华为/鸿蒙浏览器' : '识别为: ' + (b.isIOS ? 'iOS' : b.isAndroid ? '安卓' : '其他'));
+        line('');
+
+        var hasWorker = 'serviceWorker' in navigator;
+        var hasPush = hasWorker && 'PushManager' in window;
+        var hasNotif = 'Notification' in window;
+        line('Service Worker API: ' + (hasWorker ? '✓ 支持' : '✗ 不支持'));
+        line('Push API: ' + (hasPush ? '✓ 支持' : '✗ 不支持'));
+        line('Notification API: ' + (hasNotif ? '✓ 支持' : '✗ 不支持'));
+        if (hasNotif) {
+          var pm = Notification.permission;
+          line('网站通知权限: ' + (pm === 'granted' ? '✓ 已允许' : pm === 'denied' ? '✗ 被拒绝（浏览器层）' : '未询问'));
+        }
+        line('页面运行模式: ' + (isStandalone() ? '桌面图标（独立窗口）' : '浏览器标签页'));
+
+        if (!hasWorker) return;
+        navigator.serviceWorker.getRegistrations().then(function (rs) {
+          line('已注册 SW 数量: ' + rs.length);
+          return navigator.serviceWorker.ready;
+        }).then(function (reg) {
+          line('SW 就绪: ✓');
+          if (!reg.pushManager) { line('PushManager: ✗ 不可用'); return null; }
+          return reg.pushManager.getSubscription().then(function (sub) {
+            line('当前订阅: ' + (sub ? '✓ 已订阅' : '未订阅'));
+            if (sub) line('推送服务: ' + (sub.endpoint || '').split('/')[2]);
+            return sub;
+          });
+        }).catch(function (e) {
+          line('SW 状态异常: ' + (e && e.message || e));
+        }).then(function () {
+          /* 登录时尝试真实订阅，把底层报错显示出来 */
+          if (!(auth && apiConfigured() && hasPush && hasNotif)) return null;
+          line('');
+          line('正在尝试真实订阅（若卡在此步说明浏览器无法连接推送服务）…');
+          return apiFetch('/api/push/publicKey').then(function (r) { return r.json(); })
+            .then(function (pk) {
+              if (!pk || !pk.ok) { line('服务端公钥: ✗ ' + (pk && pk.error || '未配置')); return null; }
+              line('服务端公钥: ✓');
+              return navigator.serviceWorker.ready.then(function (reg) {
+                return reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: urlBase64ToUint8Array(pk.publicKey)
+                });
+              });
+            }).then(function (sub) {
+              if (!sub) return null;
+              line('订阅成功: ✓ 推送服务 ' + (sub.endpoint || '').split('/')[2]);
+              var json = sub.toJSON();
+              return apiFetch('/api/push/subscribe', {
+                method: 'POST',
+                body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys })
+              }).then(function (r) { return r.json(); }).then(function (r) {
+                line('上报服务端: ' + (r && r.ok ? '✓ 已绑定账号' : '✗ ' + (r && r.error || '失败')));
+                try { localStorage.setItem(PUSH_FLAG, '1'); } catch (e) {}
+              });
+            }).catch(function (e) {
+              var msg = String(e && e.message || e);
+              line('订阅失败: ✗ ' + msg);
+              if (/denied/i.test(msg)) {
+                line('提示: 网站通知权限被拒，按上一页指引恢复');
+              } else if (/network|timeout|failed to fetch/i.test(msg)) {
+                line('提示: 浏览器连不上推送服务器（国内网络常见），属浏览器限制');
+              }
+            });
+        }).catch(function (e) {
+          line('诊断异常: ' + (e && e.message || e));
+        }).then(function () {
+          var done = document.createElement('div');
+          done.style.cssText = 'display:flex;gap:8px;margin-top:14px;';
+          var ok = document.createElement('button');
+          ok.type = 'button';
+          ok.className = 'btn btn-primary';
+          ok.style.flex = '1';
+          ok.textContent = '知道了';
+          ok.addEventListener('click', close);
+          done.appendChild(ok);
+          sheet.appendChild(done);
+        });
+      })();
+    });
+  }
+
   function testPush() {
     if (!auth || !apiConfigured()) { toast('请先登录'); return; }
     if (!('serviceWorker' in navigator)) { toast('当前浏览器不支持后台通知'); return; }
@@ -2632,6 +2814,7 @@
               if (pushEnabled()) {
                 openMenuDialog('后台提醒', [
                   { label: '发送一条测试通知', onClick: function () { testPush(); } },
+                  { label: '推送诊断', onClick: function () { openPushDiagnostics(); } },
                   { label: '查看后台运行设置指引', onClick: function () { openPushGuide(); } },
                   { label: '关闭后台提醒', danger: true, onClick: function () { disablePush(); } }
                 ]);
