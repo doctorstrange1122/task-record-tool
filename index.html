@@ -1598,6 +1598,18 @@
     if (!document.hidden) {
       checkCycles();
       if (auth) pullData(true);
+    } else if (syncTimer) {
+      /* 切到后台：立即上传待同步数据，避免防抖期内被杀掉 */
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      pushData(true);
+    }
+  });
+  window.addEventListener('pagehide', function () {
+    if (syncTimer) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      pushData(true);
     }
   });
 })();
