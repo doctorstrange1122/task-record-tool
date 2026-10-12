@@ -305,6 +305,21 @@
     padding: 2px 6px;
     flex: 0 0 auto;
   }
+  .subcat-row .grip {
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: grab;
+    touch-action: none;
+    flex: 0 0 auto;
+    padding: 4px 2px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .subcat-row.dragging {
+    opacity: .8;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+  }
   .subcat-add {
     border: 1px dashed var(--border);
     background: #fff;
@@ -316,6 +331,7 @@
     cursor: pointer;
   }
   .subcat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 14px 0; }
+  .subcat-tip { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
 
   /* ---------- 任务按钮拖动（手机桌面风格） ---------- */
   .task-btn.drag-origin {
@@ -1284,10 +1300,12 @@
         var ungrouped = cat.tasks.filter(function (t) {
           return !t.subId || subcatIds.indexOf(t.subId) < 0;
         });
-        var uh = document.createElement('div');
-        uh.className = 'subcat-header';
-        uh.textContent = '未分组';
-        section.appendChild(uh);
+        if (ungrouped.length) {
+          var uh = document.createElement('div');
+          uh.className = 'subcat-header';
+          uh.textContent = '未分组';
+          section.appendChild(uh);
+        }
         section.appendChild(buildTaskGrid(cat, ungrouped, true, ''));
       }
 
@@ -1364,7 +1382,7 @@
     (tasks || []).forEach(function (task) {
       grid.appendChild(buildTaskButton(task, cat));
     });
-    if (!(tasks || []).length) grid.classList.add('empty');
+    if (!(tasks || []).length && !withAdd) grid.classList.add('empty');
     if (withAdd) {
       var addBtn = document.createElement('button');
       addBtn.type = 'button';
@@ -2893,9 +2911,67 @@
       h.textContent = '子分类 · ' + cat.name;
       sheet.appendChild(h);
 
+      var tip = document.createElement('div');
+      tip.className = 'subcat-tip';
+      tip.textContent = '拖动 ≡ 可调整子分类顺序，其下任务会跟随移动。';
+      sheet.appendChild(tip);
+
       var list = document.createElement('div');
       list.className = 'subcat-list';
       sheet.appendChild(list);
+
+      function commitOrder() {
+        var rows = Array.prototype.slice.call(list.querySelectorAll('.subcat-row'));
+        var ids = rows.map(function (r) { return r.dataset.sid; });
+        cat.subcats.sort(function (a, b) { return ids.indexOf(a.id) - ids.indexOf(b.id); });
+        save();
+      }
+
+      function attachRowDrag(grip, row) {
+        function rowAt(y) {
+          var rows = Array.prototype.slice.call(list.querySelectorAll('.subcat-row'));
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i] === row) continue;
+            var r = rows[i].getBoundingClientRect();
+            if (y < r.top + r.height / 2) return rows[i];
+          }
+          return null;
+        }
+        function move(y) {
+          var ref = rowAt(y);
+          if (ref) { if (row.nextSibling !== ref) list.insertBefore(row, ref); }
+          else if (list.lastChild !== row) list.appendChild(row);
+        }
+        function up() {
+          document.removeEventListener('touchmove', tmv);
+          document.removeEventListener('touchend', up);
+          document.removeEventListener('touchcancel', up);
+          document.removeEventListener('mousemove', mmv);
+          document.removeEventListener('mouseup', up);
+          row.classList.remove('dragging');
+          commitOrder();
+        }
+        function tmv(e) { if (e.touches.length !== 1) return; e.preventDefault(); move(e.touches[0].clientY); }
+        function mmv(e) { move(e.clientY); }
+        function down(y) {
+          row.classList.add('dragging');
+          document.addEventListener('touchmove', tmv, { passive: false });
+          document.addEventListener('touchend', up);
+          document.addEventListener('touchcancel', up);
+          document.addEventListener('mousemove', mmv);
+          document.addEventListener('mouseup', up);
+          move(y);
+        }
+        grip.addEventListener('touchstart', function (e) {
+          e.preventDefault();
+          down(e.touches[0].clientY);
+        }, { passive: false });
+        grip.addEventListener('mousedown', function (e) {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          down(e.clientY);
+        });
+      }
 
       function renderRows() {
         list.innerHTML = '';
@@ -2906,9 +2982,14 @@
           list.appendChild(empty);
           return;
         }
-        cat.subcats.forEach(function (sc, idx) {
+        cat.subcats.forEach(function (sc) {
           var row = document.createElement('div');
           row.className = 'subcat-row';
+          row.dataset.sid = sc.id;
+          var grip = document.createElement('span');
+          grip.className = 'grip';
+          grip.textContent = '≡';
+          grip.title = '拖动排序';
           var input = document.createElement('input');
           input.type = 'text';
           input.value = sc.name;
@@ -2920,14 +3001,17 @@
           del.textContent = '✕';
           del.title = '删除子分类';
           del.addEventListener('click', function () {
-            cat.subcats.splice(idx, 1);
+            var i = cat.subcats.indexOf(sc);
+            if (i > -1) cat.subcats.splice(i, 1);
             cat.tasks.forEach(function (t) { if (t.subId === sc.id) t.subId = null; });
             renderRows();
             save();
           });
+          row.appendChild(grip);
           row.appendChild(input);
           row.appendChild(del);
           list.appendChild(row);
+          attachRowDrag(grip, row);
         });
       }
       renderRows();
@@ -2937,7 +3021,15 @@
       addBtn.className = 'subcat-add';
       addBtn.textContent = '＋ 添加子分类';
       addBtn.addEventListener('click', function () {
-        cat.subcats.push({ id: genId(), name: '' });
+        var wasEmpty = cat.subcats.length === 0;
+        var sc = { id: genId(), name: '' };
+        cat.subcats.push(sc);
+        if (wasEmpty) {
+          /* 第一个子分类接管原本的「未分组」默认区域：原默认任务归入该子分类 */
+          var ids = {};
+          cat.subcats.forEach(function (s) { ids[s.id] = true; });
+          cat.tasks.forEach(function (t) { if (!t.subId || !ids[t.subId]) t.subId = sc.id; });
+        }
         renderRows();
         var inputs = list.querySelectorAll('.subcat-row input');
         if (inputs.length) { try { inputs[inputs.length - 1].focus(); } catch (e) {} }
