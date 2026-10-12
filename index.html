@@ -152,21 +152,12 @@
   }
   .clip-title { font-size: 15px; font-weight: 700; }
   .clip-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .clip-input {
-    width: 100%;
-    box-sizing: border-box;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #fff;
-    padding: 10px 12px;
-    font-size: 14px;
-    font-family: inherit;
-    line-height: 1.5;
-    resize: none;
-    min-height: 76px;
-    color: var(--text);
+  .clip-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
   }
-  .clip-input:focus { outline: none; border-color: var(--accent); }
   .clip-actions {
     display: flex;
     margin-top: 10px;
@@ -187,7 +178,6 @@
     transition: background .15s;
   }
   .clip-actions button:active { background: #e7f0ff; }
-  .clip-actions .clip-divider { width: 1px; background: var(--border); }
   .clip-list { margin-top: 12px; }
   .clip-item {
     display: flex;
@@ -712,26 +702,13 @@
   }
 
   function onClipSync() {
-    var input = document.getElementById('clipInput');
-    var text = input ? (input.value || '').trim() : '';
-    if (text) {
-      saveClipRecord(text);
-      input.value = '';
-      input.focus();
-    } else {
-      readSystemClipboard().then(function (t) {
-        t = (t || '').trim();
-        if (!t) { toast('系统剪贴板为空'); return; }
-        saveClipRecord(t);
-      }).catch(function () {
-        toast('无法读取系统剪贴板，请输入内容后再点同步');
-      });
-    }
-  }
-
-  function onClipClear() {
-    var input = document.getElementById('clipInput');
-    if (input) { input.value = ''; input.focus(); }
+    readSystemClipboard().then(function (t) {
+      t = (t || '').trim();
+      if (!t) { toast('系统剪贴板为空'); return; }
+      saveClipRecord(t);
+    }).catch(function () {
+      toast('无法读取系统剪贴板，请检查浏览器剪贴板权限');
+    });
   }
 
   function saveClipRecord(text) {
@@ -759,7 +736,7 @@
     var title = document.createElement('div');
     var t = document.createElement('span');
     t.className = 'clip-title';
-    t.textContent = '跨设备剪贴板';
+    t.textContent = '剪贴板';
     var sub = document.createElement('span');
     sub.className = 'clip-sub';
     sub.textContent = '保存 48 小时 · 每页最多 15 条';
@@ -768,28 +745,19 @@
     head.appendChild(title);
     panel.appendChild(head);
 
-    var input = document.createElement('textarea');
-    input.id = 'clipInput';
-    input.className = 'clip-input';
-    input.placeholder = '输入内容后点「同步」保存；留空点「同步」则读取系统剪贴板最近一条内容';
-    panel.appendChild(input);
-
     var actions = document.createElement('div');
     actions.className = 'clip-actions';
     var syncBtn = document.createElement('button');
     syncBtn.type = 'button';
-    syncBtn.textContent = '同步';
+    syncBtn.textContent = '同步剪贴板';
     syncBtn.addEventListener('click', onClipSync);
-    var divider = document.createElement('span');
-    divider.className = 'clip-divider';
-    var clearBtn = document.createElement('button');
-    clearBtn.type = 'button';
-    clearBtn.textContent = '清空';
-    clearBtn.addEventListener('click', onClipClear);
     actions.appendChild(syncBtn);
-    actions.appendChild(divider);
-    actions.appendChild(clearBtn);
     panel.appendChild(actions);
+
+    var hint = document.createElement('div');
+    hint.className = 'clip-hint';
+    hint.textContent = '自动保存最近一条剪贴板内容';
+    panel.appendChild(hint);
 
     var list = document.createElement('div');
     list.className = 'clip-list';
@@ -798,7 +766,7 @@
 
     var tip = document.createElement('div');
     tip.className = 'clip-tip';
-    tip.textContent = '提示：点「同步」有内容时保存输入框内容，无内容时自动读取系统剪贴板；点击任意记录可复制到剪贴板；记录保存 48 小时后自动删除。';
+    tip.textContent = '提示：点「同步剪贴板」自动读取并保存系统剪贴板最近一条内容；点击任意记录可复制到剪贴板；记录保存 48 小时后自动删除。';
     panel.appendChild(tip);
 
     main.appendChild(panel);
@@ -1086,8 +1054,8 @@
     var clipTab = document.createElement('button');
     clipTab.type = 'button';
     clipTab.className = 'tab clip-tab' + (clipboardView ? ' active' : '');
-    clipTab.textContent = '📋 跨设备剪贴板';
-    clipTab.title = '跨设备剪贴板：保存 48 小时，每页最多 15 条';
+    clipTab.textContent = '📋 剪贴板';
+    clipTab.title = '剪贴板：自动保存最近一条剪贴板内容，保存 48 小时，每页最多 15 条';
     clipTab.addEventListener('click', function () {
       if (suppressClick) { suppressClick = false; return; }
       clipboardView = true;
