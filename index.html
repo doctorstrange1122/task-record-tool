@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#ffffff" />
 <title>任务记录工具</title>
+<!-- PWA：添加到桌面后显示名称「任务管理」 -->
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-title" content="任务管理" />
+<meta name="mobile-web-app-capable" content="yes" />
 <style>
   :root {
-    --gray: #9aa5b1;
+    --gray: #5c6672;
     --green: #2f9e44;
     --bg: #f4f5f7;
     --card: #ffffff;
@@ -30,7 +35,7 @@
   }
   button { font-family: inherit; }
 
-  /* ---------- 顶部标题与账号 Tab ---------- */
+  /* ---------- 顶部：添加到桌面 / 标题 / 登录 ---------- */
   header {
     position: sticky;
     top: 0;
@@ -39,15 +44,61 @@
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
-    padding-top: env(safe-area-inset-top);
+  }
+  .head-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: calc(9px + env(safe-area-inset-top)) 12px 7px;
   }
   h1 {
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 700;
     text-align: center;
-    padding: 14px 16px 10px;
     letter-spacing: .5px;
+    white-space: nowrap;
   }
+  .head-pill {
+    border: 1px solid var(--border);
+    background: #f8f9fa;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 0 auto;
+  }
+  .head-pill:active { background: #eef1f4; }
+  .head-pill:disabled { opacity: .6; cursor: default; }
+  #installBtn { justify-self: start; }
+  #authBtn { justify-self: end; max-width: 36vw; }
+  #authBtn.logged {
+    color: var(--green);
+    border-color: #a9d8b6;
+    background: #edfaf0;
+  }
+  #authBtn.logged::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .pill-short { display: none; }
+  @media (max-width: 359px) {
+    .pill-full { display: none; }
+    .pill-short { display: inline; }
+  }
+
+  /* ---------- 账号 Tab ---------- */
   .tab-bar {
     display: flex;
     gap: 8px;
@@ -132,13 +183,13 @@
     position: relative;
     border: none;
     border-radius: 12px;
-    min-height: 78px;
-    padding: 10px 6px;
+    min-height: 62px;
+    padding: 8px 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
     cursor: pointer;
     font-size: 14px;
     color: #fff;
@@ -152,9 +203,9 @@
   .task-btn:active { transform: scale(.96); }
   .task-btn.done { background: var(--green); }
   .task-btn.unset {
-    background: #f1f3f5;
-    color: var(--muted);
-    border: 1.5px dashed #ced4da;
+    background: #c3cad2;
+    color: #454e57;
+    border: 1.5px dashed #8f99a3;
   }
   .task-btn .t-name {
     font-weight: 600;
@@ -167,10 +218,10 @@
   .task-btn .t-sub { font-size: 11px; opacity: .85; font-weight: 400; }
   .task-btn .badge {
     position: absolute;
-    top: 6px;
-    right: 6px;
-    min-width: 20px;
-    height: 20px;
+    top: 5px;
+    right: 5px;
+    min-width: 19px;
+    height: 19px;
     border-radius: 999px;
     background: var(--danger);
     color: #fff;
@@ -184,16 +235,16 @@
   }
   .add-task-btn {
     background: #fff !important;
-    color: var(--muted) !important;
-    border: 1.5px dashed #ced4da;
+    color: #495057 !important;
+    border: 1.5px dashed #97a1ac;
     font-size: 13px;
     font-weight: 400 !important;
   }
   .add-cat-btn {
     width: 100%;
-    border: 1.5px dashed #ced4da;
+    border: 1.5px dashed #97a1ac;
     background: transparent;
-    color: var(--muted);
+    color: #495057;
     border-radius: var(--radius);
     padding: 13px;
     font-size: 14px;
@@ -252,6 +303,7 @@
     font-weight: 600;
   }
   .btn:active { opacity: .85; }
+  .btn:disabled { opacity: .6; cursor: default; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-ghost { background: #f1f3f5; color: var(--text); }
   .btn-danger { background: #fff0f0; color: var(--danger); }
@@ -328,7 +380,13 @@
 <body>
 
 <header>
-  <h1>任务记录工具</h1>
+  <div class="head-row">
+    <button type="button" id="installBtn" class="head-pill" title="添加到桌面">
+      <span class="pill-full">＋ 添加到桌面</span><span class="pill-short">＋ 桌面</span>
+    </button>
+    <h1>任务记录工具</h1>
+    <button type="button" id="authBtn" class="head-pill" title="登录 / 注册">登录</button>
+  </div>
   <nav class="tab-bar" id="tabBar"></nav>
 </header>
 
@@ -341,11 +399,17 @@
 
   /* ================= 常量与状态 ================= */
   var STORAGE_KEY = 'taskRecordTool.v1';
+  var AUTH_KEY = 'taskRecordTool.auth.v1';
+  /* 云同步服务地址（部署 Cloudflare Worker 后填入，为空时仅本地模式） */
+  var API_BASE = '';
   var DAY = 86400000;
   var LONG_PRESS_MS = 500;
   var MAX_COUNT = 9999;
 
   var data = loadData();
+  var auth = loadAuth();
+  var suppressSync = false;
+  var syncTimer = null;
 
   /* ================= 数据层 ================= */
   function genId() {
@@ -353,7 +417,8 @@
   }
 
   function newTask() {
-    return { id: genId(), configured: false, name: '', cycleDays: 7, cycleStart: 0, count: 0 };
+    /* 默认统计周期为一天，0 点自动清零 */
+    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0 };
   }
 
   function defaultData() {
@@ -380,6 +445,7 @@
 
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+    if (!suppressSync) scheduleSync();
   }
 
   function activeAccount() {
@@ -413,23 +479,28 @@
     render();
   }
 
-  /* ================= 周期统计逻辑 ================= */
-  function cycleMs(task) { return Math.max(1, task.cycleDays || 1) * DAY; }
+  /* ================= 周期统计逻辑（0 点清零） ================= */
+  function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+  /* 清零时刻：周期开始那天的 0 点 + N 天（1 天周期即每天 0 点清零） */
+  function resetAt(task) { return startOfDay(task.cycleStart) + Math.max(1, task.cycleDays || 1) * DAY; }
 
   function isCycleExpired(task) {
-    return task.configured && task.cycleStart > 0 && (Date.now() - task.cycleStart >= cycleMs(task));
+    return task.configured && task.cycleStart > 0 && Date.now() >= resetAt(task);
   }
 
-  function remainDays(task) {
-    if (!task.configured) return 0;
-    if (task.cycleStart === 0) return task.cycleDays;
-    var left = task.cycleStart + cycleMs(task) - Date.now();
-    return Math.max(0, Math.ceil(left / DAY));
+  function remainLabel(task) {
+    if (!task.configured) return '';
+    if (task.cycleStart === 0) return task.cycleDays + ' 天周期';
+    var left = resetAt(task) - Date.now();
+    if (left <= 0) return '已到期';
+    if (left < DAY) return Math.max(1, Math.ceil(left / 3600000)) + ' 小时后清零';
+    return '剩 ' + Math.max(1, Math.round(left / DAY)) + ' 天';
   }
 
   function isDone(task) { return task.configured && task.count > 0; }
 
-  /* 周期到期后自动清零：次数归零、按钮回到灰色未完成状态 */
+  /* 周期到期自动清零：次数归零、按钮恢复未完成状态 */
   function checkCycles() {
     var changed = false;
     data.accounts.forEach(function (acc) {
@@ -444,6 +515,154 @@
       });
     });
     if (changed) { save(); render(); }
+  }
+
+  /* ================= 云同步（Cloudflare Worker） ================= */
+  function apiConfigured() { return /^https?:\/\//.test(API_BASE); }
+
+  function apiFetch(path, opts, token) {
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    var t = token || (auth && auth.token);
+    if (t) headers['Authorization'] = 'Bearer ' + t;
+    return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+  }
+
+  function loadAuth() {
+    try {
+      var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (a && a.token && a.username) return a;
+    } catch (e) {}
+    return null;
+  }
+
+  function saveAuth() {
+    try {
+      if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      else localStorage.removeItem(AUTH_KEY);
+    } catch (e) {}
+  }
+
+  function updateAuthUI() {
+    var btn = document.getElementById('authBtn');
+    if (!btn) return;
+    if (auth) {
+      btn.textContent = auth.username;
+      btn.classList.add('logged');
+      btn.title = '已登录：' + auth.username + '（点击管理）';
+    } else {
+      btn.textContent = '登录';
+      btn.classList.remove('logged');
+      btn.title = '登录 / 注册以云同步任务数据';
+    }
+  }
+
+  function clearAuth(msg) {
+    auth = null;
+    saveAuth();
+    updateAuthUI();
+    render();
+    if (msg) toast(msg);
+  }
+
+  /* 本地有变更时防抖上传 */
+  function scheduleSync(delay) {
+    if (!auth || !apiConfigured()) return;
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () { pushData(false); }, delay || 800);
+  }
+
+  function pushData(quiet) {
+    if (!auth || !apiConfigured()) return Promise.resolve();
+    return apiFetch('/api/data', {
+      method: 'PUT',
+      body: JSON.stringify({ data: data, base: auth.lastSync || null })
+    }).then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (result) {
+        if (res.ok) {
+          auth.lastSync = result.updated_at;
+          saveAuth();
+        } else if (res.status === 409) {
+          /* 其他设备有新写入：拉取最新数据 */
+          return pullData(true).then(function () {
+            if (!quiet) toast('检测到其他设备的更新，已加载最新数据');
+          });
+        }
+      });
+    }).catch(function () { /* 离线时静默失败，下次变更重试 */ });
+  }
+
+  function pullData(quiet) {
+    if (!auth || !apiConfigured()) return Promise.resolve();
+    return apiFetch('/api/data').then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (result) {
+        if (res.ok && result.data) {
+          var serverAt = result.updated_at || 0;
+          if (!auth.lastSync || serverAt > auth.lastSync) {
+            suppressSync = true;
+            data = result.data;
+            auth.lastSync = serverAt;
+            saveAuth();
+            save();
+            render();
+            suppressSync = false;
+            if (!quiet) toast('已同步云端最新数据');
+          }
+        }
+      });
+    }).catch(function () { /* 离线时静默失败 */ });
+  }
+
+  function doAuth(mode, username, password) {
+    return apiFetch(mode === 'login' ? '/api/login' : '/api/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: username, password: password })
+    }).then(function (res) {
+      return res.json().then(function (result) {
+        if (!res.ok) throw new Error(result.error || '操作失败，请重试');
+        auth = { token: result.token, username: result.username, lastSync: null };
+        saveAuth();
+        updateAuthUI();
+        render();
+        if (mode === 'register') {
+          /* 新注册用户：把本机已设置的内容同步至账号 */
+          return pushData(true).then(function () {
+            return '注册成功，本机数据已同步到账号';
+          });
+        }
+        if (result.data) {
+          /* 已有数据：采用云端版本 */
+          suppressSync = true;
+          data = result.data;
+          auth.lastSync = result.updated_at || null;
+          saveAuth();
+          save();
+          render();
+          suppressSync = false;
+          return '登录成功，已从云端恢复数据';
+        }
+        return pushData(true).then(function () {
+          return '登录成功，云端为空，已上传本机数据';
+        });
+      });
+    }).catch(function (e) {
+      if (e instanceof TypeError) throw new Error('网络异常，无法连接云同步服务');
+      throw e;
+    });
+  }
+
+  function logout() {
+    var token = auth && auth.token;
+    auth = null;
+    saveAuth();
+    updateAuthUI();
+    render();
+    toast('已退出登录（本机数据仍保留）');
+    if (token && apiConfigured()) {
+      apiFetch('/api/logout', { method: 'POST', body: '{}' }, token).catch(function () {});
+    }
   }
 
   /* ================= 渲染 ================= */
@@ -545,7 +764,9 @@
 
     var hint = document.createElement('p');
     hint.className = 'hint';
-    hint.textContent = '点击按钮记录一次完成；长按按钮可编辑、调整次数或删除任务。';
+    hint.textContent = auth
+      ? '点击按钮记录一次完成；长按按钮可管理。数据已开启云同步（' + auth.username + '）。'
+      : '点击按钮记录一次完成；长按按钮可管理。数据仅保存在本机，登录后可多设备云同步。';
     main.appendChild(hint);
   }
 
@@ -571,7 +792,7 @@
       name.textContent = task.name;
       var sub = document.createElement('span');
       sub.className = 't-sub';
-      sub.textContent = task.cycleStart > 0 ? ('剩 ' + remainDays(task) + ' 天') : (task.cycleDays + ' 天周期');
+      sub.textContent = remainLabel(task);
       btn.appendChild(name);
       btn.appendChild(sub);
       if (task.count > 0) {
@@ -595,7 +816,7 @@
       return;
     }
     var now = Date.now();
-    if (task.cycleStart === 0 || now - task.cycleStart >= cycleMs(task)) {
+    if (task.cycleStart === 0 || now >= resetAt(task)) {
       /* 新周期首次完成 */
       task.cycleStart = now;
       task.count = 1;
@@ -650,7 +871,7 @@
     el.addEventListener('mousedown', function (e) { start(e.clientX, e.clientY); });
     el.addEventListener('mouseup', cancel);
     el.addEventListener('mouseleave', cancel);
-    /* 抑制系统长按菜单（移动端），桌面端右键由 mousedown 长按覆盖 */
+    /* 抑制系统长按菜单（移动端） */
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
 
@@ -685,7 +906,7 @@
     document.getElementById('modalRoot').innerHTML = '';
   }
 
-  /* 表单弹窗：name / 天数 / 下拉等 */
+  /* 表单弹窗 */
   function openFormDialog(o) {
     var confirmed = false;
     openModal(function (sheet, rawClose) {
@@ -826,7 +1047,6 @@
     }
     if (!isEdit && !task) {
       /* 由「添加任务」入口创建的新按钮，先放入分类，取消时移除 */
-      var acc = activeAccount();
       targetCat = cat;
       task = newTask();
       targetCat.tasks.push(task);
@@ -838,14 +1058,14 @@
       dismissOnMask: isNewAddition ? false : true,
       fields: [
         { key: 'name', label: '任务名称', type: 'text', value: isEdit ? task.name : '', placeholder: '请输入任务名称' },
-        { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 7, min: 1, max: 3650, placeholder: '7' }
+        { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 1, min: 1, max: 3650, placeholder: '1' }
       ],
       confirmText: isEdit ? '保存' : '确定',
-      onConfirm: function (v, close) {
+      onConfirm: function (v) {
         var name = (v.name || '').trim();
         if (!name) { toast('请输入任务名称'); return false; }
         var cycle = parseInt(v.cycle, 10);
-        if (!cycle || cycle < 1) cycle = 7;
+        if (!cycle || cycle < 1) cycle = 1;
         if (cycle > 3650) cycle = 3650;
         task.configured = true;
         task.name = name;
@@ -979,7 +1199,7 @@
         var n = parseInt(input.value, 10);
         var finalVal = isNaN(n) ? 0 : Math.max(0, Math.min(MAX_COUNT, n));
         task.count = finalVal;
-        if (finalVal > 0 && (task.cycleStart === 0 || Date.now() - task.cycleStart >= cycleMs(task))) {
+        if (finalVal > 0 && (task.cycleStart === 0 || Date.now() >= resetAt(task))) {
           task.cycleStart = Date.now();
         }
         if (finalVal === 0) task.cycleStart = 0;
@@ -993,6 +1213,124 @@
       sheet.appendChild(actions);
 
       setTimeout(function () { try { input.focus(); input.select(); } catch (e) {} }, 60);
+    });
+  }
+
+  /* ================= 登录 / 注册 ================= */
+  function openAuthModal(initialMode) {
+    if (!apiConfigured()) {
+      openModal(function (sheet, close) {
+        var h = document.createElement('h3');
+        h.textContent = '云同步未配置';
+        sheet.appendChild(h);
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = '云同步服务地址尚未配置，暂时无法登录。本机功能可正常使用，数据保存在本机浏览器。';
+        sheet.appendChild(p);
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-primary';
+        ok.textContent = '知道了';
+        ok.style.width = '100%';
+        ok.style.marginTop = '12px';
+        ok.addEventListener('click', close);
+        sheet.appendChild(ok);
+      });
+      return;
+    }
+
+    var mode = initialMode || 'login';
+    openModal(function (sheet, close) {
+      var inputs = {};
+      var errEl = document.createElement('p');
+      errEl.className = 'hint';
+      errEl.style.color = 'var(--danger)';
+      errEl.style.display = 'none';
+      errEl.style.marginBottom = '0';
+
+      function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
+      function hideErr() { errEl.style.display = 'none'; }
+
+      function field(key, label, type) {
+        var wrap = document.createElement('div');
+        wrap.className = 'field';
+        var l = document.createElement('label');
+        l.textContent = label;
+        wrap.appendChild(l);
+        var input = document.createElement('input');
+        input.type = type;
+        if (type === 'password') input.autocomplete = 'new-password';
+        wrap.appendChild(input);
+        inputs[key] = input;
+        return wrap;
+      }
+
+      function render() {
+        sheet.innerHTML = '';
+        var h = document.createElement('h3');
+        h.textContent = mode === 'login' ? '登录账号' : '注册账号';
+        sheet.appendChild(h);
+        var tip = document.createElement('p');
+        tip.className = 'hint';
+        tip.style.marginBottom = '12px';
+        tip.textContent = mode === 'login'
+          ? '登录后自动同步该账号在所有设备上的任务'
+          : '注册后会自动把本机已设置的任务同步到新账号';
+        sheet.appendChild(tip);
+        sheet.appendChild(field('username', '用户名（2-20 个字符，不能含空格）', 'text'));
+        sheet.appendChild(field('password', '密码（至少 6 位）', 'password'));
+        if (mode === 'register') sheet.appendChild(field('confirm', '确认密码', 'password'));
+        sheet.appendChild(errEl);
+        var actions = document.createElement('div');
+        actions.className = 'sheet-actions';
+        actions.style.marginTop = '12px';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'btn btn-ghost';
+        cancelBtn.textContent = '取消';
+        cancelBtn.addEventListener('click', close);
+        var okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.className = 'btn btn-primary';
+        okBtn.textContent = mode === 'login' ? '登录' : '注册';
+        okBtn.addEventListener('click', submit);
+        actions.appendChild(cancelBtn);
+        actions.appendChild(okBtn);
+        sheet.appendChild(actions);
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.style.cssText = 'width:100%;margin-top:10px;border:none;background:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px;';
+        toggle.textContent = mode === 'login' ? '没有账号？立即注册' : '已有账号？去登录';
+        toggle.addEventListener('click', function () {
+          mode = mode === 'login' ? 'register' : 'login';
+          render();
+        });
+        sheet.appendChild(toggle);
+        setTimeout(function () { try { inputs.username.focus(); } catch (e) {} }, 60);
+      }
+
+      function submit() {
+        hideErr();
+        var username = (inputs.username.value || '').trim();
+        var password = inputs.password.value || '';
+        var confirmPw = inputs.confirm ? (inputs.confirm.value || '') : password;
+        if (!/^[^\s]{2,20}$/.test(username)) { showErr('用户名须为 2-20 个字符（不能含空格）'); return; }
+        if (password.length < 6) { showErr('密码长度至少 6 位'); return; }
+        if (mode === 'register' && password !== confirmPw) { showErr('两次输入的密码不一致'); return; }
+        var okBtn = sheet.querySelector('.btn-primary');
+        okBtn.disabled = true;
+        okBtn.textContent = '提交中…';
+        doAuth(mode, username, password).then(function (msg) {
+          close();
+          toast(msg);
+        }).catch(function (err) {
+          showErr((err && err.message) || '操作失败，请重试');
+          okBtn.disabled = false;
+          okBtn.textContent = mode === 'login' ? '登录' : '注册';
+        });
+      }
+
+      render();
     });
   }
 
@@ -1010,7 +1348,7 @@
         { key: 'copyFrom', label: '复制已有账号的任务', type: 'select', value: '', options: options }
       ],
       confirmText: '创建',
-      onConfirm: function (v, close) {
+      onConfirm: function (v) {
         var name = (v.name || '').trim() || defName;
         var acc = { id: genId(), name: name, categories: [] };
         var src = null;
@@ -1018,7 +1356,7 @@
           data.accounts.forEach(function (a) { if (a.id === v.copyFrom) src = a; });
         }
         if (src) {
-          /* 深拷贝任务结构，次数与周期进度归零，从新账号第一天开始统计 */
+          /* 深拷贝任务结构，次数与周期进度归零 */
           src.categories.forEach(function (cat) {
             var nc = { id: genId(), name: cat.name, tasks: [] };
             cat.tasks.forEach(function (t) {
@@ -1146,15 +1484,121 @@
     t.textContent = msg;
     document.body.appendChild(t);
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 1800);
+    toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
+  }
+
+  /* ================= 添加到桌面（PWA） ================= */
+  var deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+
+  function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function updateInstallBtn() {
+    var btn = document.getElementById('installBtn');
+    if (!btn) return;
+    if (isStandalone()) {
+      btn.innerHTML = '<span class="pill-full">✓ 已在桌面运行</span><span class="pill-short">✓ 桌面</span>';
+      btn.disabled = true;
+    }
+  }
+
+  function openInstallHelp() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '添加到桌面';
+      sheet.appendChild(h);
+      var img = document.createElement('img');
+      img.src = 'icon-192.png';
+      img.alt = '任务管理';
+      img.style.cssText = 'display:block;width:72px;height:72px;margin:0 auto 12px;border-radius:16px;box-shadow:0 2px 8px rgba(16,24,40,.15);';
+      sheet.appendChild(img);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.textAlign = 'left';
+      var ua = navigator.userAgent || '';
+      var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var isAndroid = /Android/i.test(ua);
+      if (isIOS) {
+        p.innerHTML = 'iPhone / iPad：<br>1. 点击 Safari 底部的<strong>分享按钮</strong>（□↑）<br>2. 选择「<strong>添加到主屏幕</strong><br>3. 点击「添加」，桌面显示名称「<strong>任务管理</strong>」';
+      } else if (isAndroid) {
+        p.innerHTML = '安卓手机：<br>1. 点击浏览器右上角<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加到主屏幕</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else {
+        p.innerHTML = '电脑浏览器：<br>1. 点击地址栏右侧的<strong>安装图标</strong>（⊕）<br>2. 确认安装，应用名称「<strong>任务管理</strong>」';
+      }
+      sheet.appendChild(p);
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '知道了';
+      ok.style.width = '100%';
+      ok.style.marginTop = '14px';
+      ok.addEventListener('click', close);
+      sheet.appendChild(ok);
+    });
+  }
+
+  function bindHeaderButtons() {
+    var installBtn = document.getElementById('installBtn');
+    installBtn.addEventListener('click', function () {
+      if (installBtn.disabled) { toast('当前已从桌面图标运行'); return; }
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
+          deferredPrompt = null;
+        });
+        return;
+      }
+      openInstallHelp();
+    });
+
+    var authBtn = document.getElementById('authBtn');
+    authBtn.addEventListener('click', function () {
+      if (auth) {
+        openMenuDialog('云同步 · ' + auth.username, [
+          {
+            label: '立即同步',
+            onClick: function () {
+              toast('同步请求已发送');
+              pullData(false);
+              pushData(false);
+            }
+          },
+          {
+            label: '退出登录',
+            danger: true,
+            onClick: function () { logout(); }
+          }
+        ]);
+      } else {
+        openAuthModal('login');
+      }
+    });
   }
 
   /* ================= 启动 ================= */
+  bindHeaderButtons();
   checkCycles();
   render();
-  setInterval(checkCycles, 30000);
+  updateAuthUI();
+  updateInstallBtn();
+  if (auth && apiConfigured()) {
+    /* 保持登录状态：自动拉取云端最新数据 */
+    pullData(false);
+  }
+  setInterval(function () {
+    checkCycles();
+    if (auth) pullData(true);
+  }, 30000);
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) checkCycles();
+    if (!document.hidden) {
+      checkCycles();
+      if (auth) pullData(true);
+    }
   });
 })();
 </script>
