@@ -1245,8 +1245,7 @@
     if (clipboardView) { renderClipboardPanel(); return; }
     var acc = activeAccount();
     /* 清理空名称子分类，并把指向已删除子分类的任务回退到未分组；
-       有子分类且存在未分组任务时，自动补上「未分组」保留条目（可改名/排序）；
-       若真实子分类已删光，则移除保留条目回退平铺 */
+       始终保留「未分组」条目（可改名/排序），即使还没有真实子分类也在管理界面可见 */
     acc.categories.forEach(function (cat) {
       if (!Array.isArray(cat.subcats)) cat.subcats = [];
       var ids = {};
@@ -1260,17 +1259,12 @@
         if (t.subId === UNG_ID) t.subId = null;
         if (t.subId && !ids[t.subId]) t.subId = null;
       });
-      var realCount = cat.subcats.filter(function (s) { return s.id !== UNG_ID; }).length;
-      if (!realCount) {
-        cat.subcats = [];
+      var hasUng = cat.subcats.some(function (s) { return s.id === UNG_ID; });
+      if (!hasUng) {
+        cat.subcats.push({ id: UNG_ID, name: '未分组' });
       } else {
-        var hasUng = cat.subcats.some(function (s) { return s.id === UNG_ID; });
-        if (!hasUng) {
-          cat.subcats.push({ id: UNG_ID, name: '未分组' });
-        } else {
-          var ungEntry = cat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
-          if (!ungEntry.name) ungEntry.name = '未分组';
-        }
+        var ungEntry = cat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
+        if (!ungEntry.name) ungEntry.name = '未分组';
       }
     });
     var main = document.getElementById('main');
@@ -3038,11 +3032,11 @@
       addBtn.className = 'subcat-add';
       addBtn.textContent = '＋ 添加子分类';
       addBtn.addEventListener('click', function () {
-        var wasEmpty = cat.subcats.length === 0;
+        var realCount = cat.subcats.filter(function (s) { return s.id !== UNG_ID; }).length;
         var sc = { id: genId(), name: '' };
         cat.subcats.push(sc);
-        if (wasEmpty) {
-          /* 第一个子分类接管原本的「未分组」默认区域：原默认任务归入该子分类 */
+        if (!realCount) {
+          /* 第一个真实子分类接管原本的「未分组」默认区域：原默认任务归入该子分类 */
           var ids = {};
           cat.subcats.forEach(function (s) { ids[s.id] = true; });
           cat.tasks.forEach(function (t) { if (!t.subId || !ids[t.subId]) t.subId = sc.id; });
