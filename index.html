@@ -1271,7 +1271,7 @@
       var sub = document.createElement('span');
       sub.className = 'cat-sub';
       var doneCount = cat.tasks.filter(isDone).length;
-      sub.textContent = cat.tasks.length + ' 个任务 · ' + doneCount + ' 个进行中';
+      sub.textContent = cat.tasks.length + ' 个任务 · ' + doneCount + ' 个已完成';
       nameWrap.appendChild(name);
       nameWrap.appendChild(sub);
       var more = document.createElement('button');
