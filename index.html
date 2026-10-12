@@ -1299,15 +1299,20 @@
       if (cat.subcats.length === 0) {
         section.appendChild(buildTaskGrid(cat, cat.tasks, true, ''));
       } else {
+        /* 只有一个「未分组」且未改名时，主界面隐藏该分组名（管理界面仍可看到并改名） */
+        var onlyDefaultUng = cat.subcats.length === 1 &&
+          cat.subcats[0].id === UNG_ID && (cat.subcats[0].name || '未分组') === '未分组';
         cat.subcats.forEach(function (sc) {
           var isUng = sc.id === UNG_ID;
           var scTasks = isUng
             ? cat.tasks.filter(function (t) { return !t.subId; })
             : cat.tasks.filter(function (t) { return t.subId === sc.id; });
-          var sh = document.createElement('div');
-          sh.className = 'subcat-header';
-          sh.textContent = sc.name;
-          section.appendChild(sh);
+          if (!(isUng && onlyDefaultUng)) {
+            var sh = document.createElement('div');
+            sh.className = 'subcat-header';
+            sh.textContent = sc.name;
+            section.appendChild(sh);
+          }
           section.appendChild(buildTaskGrid(cat, scTasks, isUng, sc.id));
         });
       }
