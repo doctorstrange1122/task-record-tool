@@ -233,6 +233,15 @@
     padding: 0 5px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
   }
+  .task-btn .t-bell {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: .95;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25));
+  }
   .add-task-btn {
     background: #fff !important;
     color: #495057 !important;
@@ -482,7 +491,7 @@
   /* ================= 周期统计逻辑（0 点清零） ================= */
   function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
 
-  /* 清零时刻：周期开始那天的 0 点 + N 天（1 天周期即每天 0 点清零） */
+  /* 清零时刻：周期开始那天的 0 点 + N 天（1 天周期即每天 0 点清零，与点击时间无关） */
   function resetAt(task) { return startOfDay(task.cycleStart) + Math.max(1, task.cycleDays || 1) * DAY; }
 
   function isCycleExpired(task) {
@@ -491,11 +500,13 @@
 
   function remainLabel(task) {
     if (!task.configured) return '';
-    if (task.cycleStart === 0) return task.cycleDays + ' 天周期';
-    var left = resetAt(task) - Date.now();
-    if (left <= 0) return '已到期';
-    if (left < DAY) return Math.max(1, Math.ceil(left / 3600000)) + ' 小时后清零';
-    return '剩 ' + Math.max(1, Math.round(left / DAY)) + ' 天';
+    if (task.cycleStart === 0) return (task.cycleDays || 1) + ' 天周期 · 0 点清零';
+    var at = resetAt(task);
+    if (Date.now() >= at) return '已到期';
+    var d = new Date(at);
+    var diffDays = Math.round((startOfDay(at) - startOfDay(Date.now())) / DAY);
+    var when = diffDays <= 0 ? '今天' : diffDays === 1 ? '明天' : (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    return when + ' 0 点清零';
   }
 
   function isDone(task) { return task.configured && task.count > 0; }
@@ -531,7 +542,10 @@
   function loadAuth() {
     try {
       var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
-      if (a && a.token && a.username) return a;
+      if (a && a.token && a.username) {
+        if (!a.nickname) a.nickname = a.username; /* 兼容早期无昵称的登录态 */
+        return a;
+      }
     } catch (e) {}
     return null;
   }
@@ -547,9 +561,9 @@
     var btn = document.getElementById('authBtn');
     if (!btn) return;
     if (auth) {
-      btn.textContent = auth.username;
+      btn.textContent = auth.nickname || auth.username;
       btn.classList.add('logged');
-      btn.title = '已登录：' + auth.username + '（点击管理）';
+      btn.title = '已登录：' + (auth.nickname || auth.username) + '（账号 ' + auth.username + '，点击管理）';
     } else {
       btn.textContent = '登录';
       btn.classList.remove('logged');
@@ -569,7 +583,10 @@
   function scheduleSync(delay) {
     if (!auth || !apiConfigured()) return;
     if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(function () { pushData(false); }, delay || 800);
+    syncTimer = setTimeout(function () {
+      syncTimer = null;
+      pushData(false);
+    }, delay || 800);
   }
 
   function pushData(quiet) {
@@ -615,14 +632,14 @@
     }).catch(function () { /* 离线时静默失败 */ });
   }
 
-  function doAuth(mode, username, password) {
+  function doAuth(mode, username, password, nickname) {
     return apiFetch(mode === 'login' ? '/api/login' : '/api/register', {
       method: 'POST',
-      body: JSON.stringify({ username: username, password: password })
+      body: JSON.stringify({ username: username, password: password, nickname: nickname || '' })
     }).then(function (res) {
       return res.json().then(function (result) {
         if (!res.ok) throw new Error(result.error || '操作失败，请重试');
-        auth = { token: result.token, username: result.username, lastSync: null };
+        auth = { token: result.token, username: result.username, nickname: result.nickname || result.username, lastSync: null };
         saveAuth();
         updateAuthUI();
         render();
@@ -765,7 +782,7 @@
     var hint = document.createElement('p');
     hint.className = 'hint';
     hint.textContent = auth
-      ? '点击按钮记录一次完成；长按按钮可管理。数据已开启云同步（' + auth.username + '）。'
+      ? '点击按钮记录一次完成；长按按钮可管理。数据已开启云同步（' + (auth.nickname || auth.username) + '）。'
       : '点击按钮记录一次完成；长按按钮可管理。数据仅保存在本机，登录后可多设备云同步。';
     main.appendChild(hint);
   }
@@ -800,6 +817,13 @@
         badge.className = 'badge';
         badge.textContent = String(task.count);
         btn.appendChild(badge);
+      }
+      if (task.remind) {
+        var bell = document.createElement('span');
+        bell.className = 't-bell';
+        bell.textContent = '⏰';
+        bell.title = '每天 ' + task.remind + ' 提醒';
+        btn.appendChild(bell);
       }
     }
 
@@ -1117,6 +1141,10 @@
         onClick: function () { openCountDialog(task); }
       },
       {
+        label: task.remind ? '设置提醒（当前每天 ' + task.remind + '）' : '设置提醒',
+        onClick: function () { openRemindDialog(task); }
+      },
+      {
         label: '重置统计（次数清零）',
         onClick: function () {
           task.count = 0;
@@ -1140,6 +1168,165 @@
   }
 
   /* 手动调整次数 */
+  /* ================= 提醒功能（调用系统日历） ================= */
+  var REMIND_PRESETS = [
+    { label: '早 9 点', value: '09:00' },
+    { label: '中午 12 点', value: '12:00' },
+    { label: '晚上 21 点', value: '21:00' }
+  ];
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /* 生成日历日程文件（.ics）：每日重复 + 准点闹钟提醒 */
+  function buildReminderIcs(task, timeStr) {
+    var parts = String(timeStr).split(':');
+    var hh = parseInt(parts[0], 10), mm = parseInt(parts[1], 10);
+    if (isNaN(hh) || isNaN(mm)) return null;
+    var start = new Date();
+    start.setHours(hh, mm, 0, 0);
+    if (start.getTime() <= Date.now()) start.setDate(start.getDate() + 1);
+    var end = new Date(start.getTime() + 15 * 60000);
+    function fmt(d) {
+      return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+        'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
+    }
+    var uid = 'task-' + task.id + '-' + start.getTime() + '@task-record';
+    return [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//\u4efb\u52a1\u8bb0\u5f55\u5de5\u5177//\u4efb\u52a1\u7ba1\u7406//CN',
+      'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      'UID:' + uid,
+      'DTSTAMP:' + fmt(new Date()),
+      'DTSTART:' + fmt(start),
+      'DTEND:' + fmt(end),
+      'RRULE:FREQ=DAILY',
+      'SUMMARY:\u4efb\u52a1\u63d0\u9192\uff1a' + task.name,
+      'DESCRIPTION:\u8be5\u53bb\u5b8c\u6210\u4efb\u52a1\u300c' + task.name + '\u300d\u4e86\uff08\u4efb\u52a1\u8bb0\u5f55\u5de5\u5177\uff09',
+      'BEGIN:VALARM',
+      'TRIGGER:-PT0M',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:\u4efb\u52a1\u63d0\u9192\uff1a' + task.name,
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+  }
+
+  function downloadReminderIcs(task, timeStr) {
+    var ics = buildReminderIcs(task, timeStr);
+    if (!ics) { toast('提醒时间格式不正确'); return; }
+    var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '任务提醒-' + task.name + '.ics';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      try { URL.revokeObjectURL(a.href); } catch (e) {}
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 800);
+  }
+
+  function openRemindDialog(task) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '设置提醒 · ' + task.name;
+      sheet.appendChild(h);
+      var tip = document.createElement('p');
+      tip.className = 'hint';
+      tip.style.textAlign = 'left';
+      tip.innerHTML = '选择提醒时间，将按设定时间<strong>每天</strong>提醒（通过系统日历日程实现）。' +
+        (task.remind ? '<br>当前提醒：每天 <strong>' + task.remind + '</strong>' : '<br>当前未设置提醒。');
+      sheet.appendChild(tip);
+
+      var chosen = task.remind || '';
+
+      /* 三个快捷选项 */
+      var list = document.createElement('div');
+      list.style.cssText = 'display:flex;gap:8px;margin:12px 0 4px;';
+      function paint() {
+        Array.prototype.forEach.call(list.children, function (c, i) {
+          var on = REMIND_PRESETS[i].value === chosen;
+          c.style.background = on ? 'var(--accent)' : '#f8f9fa';
+          c.style.color = on ? '#fff' : 'var(--text)';
+          c.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+        });
+      }
+      REMIND_PRESETS.forEach(function (p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = p.label;
+        b.style.cssText = 'flex:1;padding:10px 2px;border-radius:10px;border:1px solid var(--border);background:#f8f9fa;color:var(--text);font-size:13px;cursor:pointer;';
+        b.addEventListener('click', function () {
+          chosen = p.value;
+          customInput.value = p.value;
+          paint();
+        });
+        list.appendChild(b);
+      });
+      sheet.appendChild(list);
+      paint();
+
+      /* 自定义时间 */
+      var wrap = document.createElement('div');
+      wrap.className = 'field';
+      var l = document.createElement('label');
+      l.textContent = '自定义时间（也可直接修改）';
+      wrap.appendChild(l);
+      var customInput = document.createElement('input');
+      customInput.type = 'time';
+      customInput.value = task.remind || '09:00';
+      customInput.addEventListener('input', function () {
+        if (customInput.value) {
+          chosen = customInput.value;
+          paint();
+        }
+      });
+      wrap.appendChild(customInput);
+      sheet.appendChild(wrap);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      actions.style.marginTop = '14px';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'btn btn-ghost';
+      clearBtn.textContent = '清除提醒';
+      clearBtn.style.color = 'var(--danger)';
+      clearBtn.addEventListener('click', function () {
+        task.remind = null;
+        save();
+        render();
+        close();
+        toast('已清除提醒');
+      });
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-primary';
+      okBtn.textContent = '保存并加入日历';
+      okBtn.addEventListener('click', function () {
+        if (!/^\d{2}:\d{2}$/.test(chosen)) { toast('请选择或输入提醒时间'); return; }
+        task.remind = chosen;
+        save();
+        render();
+        downloadReminderIcs(task, chosen);
+        close();
+        toast('提醒已设置：每天 ' + chosen + '，日历日程已生成');
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(clearBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+    });
+  }
+
   function openCountDialog(task) {
     var value = task.count;
     openModal(function (sheet, close) {
@@ -1277,7 +1464,13 @@
           ? '登录后自动同步该账号在所有设备上的任务'
           : '注册后会自动把本机已设置的任务同步到新账号';
         sheet.appendChild(tip);
-        sheet.appendChild(field('username', '用户名（2-20 个字符，不能含空格）', 'text'));
+        sheet.appendChild(field('username', mode === 'register' ? '账号（7-11 位数字）' : '账号（7-11 位数字）', 'text'));
+        inputs.username.inputMode = 'numeric';
+        inputs.username.autocomplete = 'username';
+        if (mode === 'register') {
+          sheet.appendChild(field('nickname', '昵称（1-20 个字符）', 'text'));
+          inputs.nickname.autocomplete = 'nickname';
+        }
         sheet.appendChild(field('password', '密码（至少 6 位）', 'password'));
         if (mode === 'register') sheet.appendChild(field('confirm', '确认密码', 'password'));
         sheet.appendChild(errEl);
@@ -1312,15 +1505,17 @@
       function submit() {
         hideErr();
         var username = (inputs.username.value || '').trim();
+        var nickname = inputs.nickname ? (inputs.nickname.value || '').trim() : '';
         var password = inputs.password.value || '';
         var confirmPw = inputs.confirm ? (inputs.confirm.value || '') : password;
-        if (!/^[^\s]{2,20}$/.test(username)) { showErr('用户名须为 2-20 个字符（不能含空格）'); return; }
+        if (!/^\d{7,11}$/.test(username)) { showErr('账号须为 7-11 位数字'); return; }
+        if (mode === 'register' && (nickname.length < 1 || nickname.length > 20)) { showErr('昵称须为 1-20 个字符'); return; }
         if (password.length < 6) { showErr('密码长度至少 6 位'); return; }
         if (mode === 'register' && password !== confirmPw) { showErr('两次输入的密码不一致'); return; }
         var okBtn = sheet.querySelector('.btn-primary');
         okBtn.disabled = true;
         okBtn.textContent = '提交中…';
-        doAuth(mode, username, password).then(function (msg) {
+        doAuth(mode, username, password, nickname).then(function (msg) {
           close();
           toast(msg);
         }).catch(function (err) {
@@ -1364,6 +1559,7 @@
               nt.configured = t.configured;
               nt.name = t.name;
               nt.cycleDays = t.cycleDays;
+              nt.remind = t.remind || null;
               nc.tasks.push(nt);
             });
             acc.categories.push(nc);
@@ -1487,23 +1683,43 @@
     toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
   }
 
-  /* ================= 添加到桌面（PWA） ================= */
+  /* ================= 添加到桌面（PWA，全品牌浏览器兼容） ================= */
   var deferredPrompt = null;
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     deferredPrompt = e;
+  });
+  /* 部分浏览器（如鸿蒙）安装成功后不会派发 appinstalled，这里做兜底刷新 */
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null;
+    updateInstallBtn();
   });
 
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
 
+  function detectBrowser() {
+    var ua = navigator.userAgent || '';
+    return {
+      isIOS: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+      isHarmony: /HarmonyOS|harmony|ArkWeb|HuaweiBrowser|HUAWEI/i.test(ua),
+      isWeixin: /MicroMessenger/i.test(ua),
+      isMi: /MiuiBrowser/i.test(ua),
+      isOppo: /HeyTapBrowser|OppoBrowser/i.test(ua),
+      isVivo: /VivoBrowser/i.test(ua),
+      isSamsung: /SamsungBrowser/i.test(ua),
+      isAndroid: /Android/i.test(ua)
+    };
+  }
+
   function updateInstallBtn() {
     var btn = document.getElementById('installBtn');
     if (!btn) return;
     if (isStandalone()) {
+      /* 不禁用按钮：避免个别浏览器禁用后点击完全无反馈 */
       btn.innerHTML = '<span class="pill-full">✓ 已在桌面运行</span><span class="pill-short">✓ 桌面</span>';
-      btn.disabled = true;
+      btn.dataset.standalone = '1';
     }
   }
 
@@ -1520,16 +1736,27 @@
       var p = document.createElement('p');
       p.className = 'hint';
       p.style.textAlign = 'left';
-      var ua = navigator.userAgent || '';
-      var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      var isAndroid = /Android/i.test(ua);
-      if (isIOS) {
-        p.innerHTML = 'iPhone / iPad：<br>1. 点击 Safari 底部的<strong>分享按钮</strong>（□↑）<br>2. 选择「<strong>添加到主屏幕</strong><br>3. 点击「添加」，桌面显示名称「<strong>任务管理</strong>」';
-      } else if (isAndroid) {
-        p.innerHTML = '安卓手机：<br>1. 点击浏览器右上角<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加到主屏幕</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      var b = detectBrowser();
+      var html = '';
+      if (b.isIOS) {
+        html = 'iPhone / iPad（Safari）：<br>1. 点击底部<strong>分享按钮</strong>（□↑）<br>2. 选择「<strong>添加到主屏幕</strong>」<br>3. 点击「添加」，桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isHarmony) {
+        html = '鸿蒙手机（华为/鸿蒙浏览器）：<br>1. 点击浏览器<strong>底部工具栏</strong>或右上角<strong>菜单</strong>（⋮ / ⌄）<br>2. 选择「<strong>添加到桌面</strong>」（部分版本在「工具箱 / 更多」内，也可能叫「安装应用」「桌面快捷方式」）<br>3. 确认后桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isWeixin) {
+        html = '微信内置浏览器：<br>1. 点击右上角 <strong>⋯</strong><br>2. 选择「<strong>在浏览器中打开</strong>」<br>3. 在浏览器中再次打开本页面，然后按该方法添加到桌面';
+      } else if (b.isMi) {
+        html = '小米手机（小米浏览器）：<br>1. 点击底部<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加至桌面</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isOppo || b.isVivo) {
+        html = 'OPPO / vivo 手机：<br>1. 点击浏览器<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加到桌面</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isSamsung) {
+        html = '三星手机（三星浏览器）：<br>1. 点击底部<strong>菜单</strong>（☰）<br>2. 选择「<strong>添加到主屏幕</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isAndroid) {
+        html = '安卓手机（Chrome 等浏览器）：<br>1. 点击右上角<strong>菜单</strong>（⋮）<br>2. 选择「<strong>安装应用</strong>」或「<strong>添加到主屏幕</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
       } else {
-        p.innerHTML = '电脑浏览器：<br>1. 点击地址栏右侧的<strong>安装图标</strong>（⊕）<br>2. 确认安装，应用名称「<strong>任务管理</strong>」';
+        html = '电脑浏览器：<br>1. 点击地址栏右侧的<strong>安装图标</strong>（⊕）<br>2. 确认安装，应用名称「<strong>任务管理</strong>」';
       }
+      html += '<br><br>找不到对应选项？请在浏览器菜单里查找「添加到桌面 / 添加至主屏幕 / 安装应用 / 桌面快捷方式」等类似入口。';
+      p.innerHTML = html;
       sheet.appendChild(p);
       var ok = document.createElement('button');
       ok.type = 'button';
@@ -1545,13 +1772,19 @@
   function bindHeaderButtons() {
     var installBtn = document.getElementById('installBtn');
     installBtn.addEventListener('click', function () {
-      if (installBtn.disabled) { toast('当前已从桌面图标运行'); return; }
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
-          deferredPrompt = null;
-        });
-        return;
+      if (installBtn.dataset.standalone) { toast('当前已从桌面图标运行'); return; }
+      var b = detectBrowser();
+      /* 鸿蒙浏览器不弹原生安装框（部分版本无响应），直接给图文指引 */
+      if (deferredPrompt && !b.isHarmony) {
+        try {
+          deferredPrompt.prompt();
+          Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
+            deferredPrompt = null;
+          });
+          return;
+        } catch (e) {
+          /* 原生安装不可用时走指引 */
+        }
       }
       openInstallHelp();
     });
@@ -1559,7 +1792,7 @@
     var authBtn = document.getElementById('authBtn');
     authBtn.addEventListener('click', function () {
       if (auth) {
-        openMenuDialog('云同步 · ' + auth.username, [
+        openMenuDialog('云同步 · ' + (auth.nickname || auth.username), [
           {
             label: '立即同步',
             onClick: function () {
