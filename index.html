@@ -24,7 +24,9 @@
     --border: #e9ecef;
     --radius: 14px;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
+  /* 仅表单控件允许选中文本，便于输入与编辑 */
+  input, textarea, select { -webkit-user-select: text; user-select: text; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
@@ -161,23 +163,21 @@
   .clip-actions {
     display: flex;
     margin-top: 10px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: 12px;
     overflow: hidden;
-    background: #fff;
   }
   .clip-actions button {
     flex: 1;
     border: none;
-    background: #fff;
-    color: var(--accent);
+    background: var(--accent);
+    color: #fff;
     font-size: 15px;
-    font-weight: 600;
-    padding: 10px 0;
+    font-weight: 700;
+    padding: 12px 0;
     cursor: pointer;
     transition: background .15s;
   }
-  .clip-actions button:active { background: #e7f0ff; }
+  .clip-actions button:active { background: var(--accent-deep); }
   .clip-list { margin-top: 12px; }
   .clip-item {
     display: flex;
@@ -257,6 +257,91 @@
     flex: 0 0 auto;
   }
   .icon-btn:active { background: #e9ecef; }
+
+  /* ---------- 子分类分组 ---------- */
+  .subcat-header {
+    display: flex;
+    align-items: center;
+    margin: 14px 2px 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .subcat-header::before {
+    content: '';
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--accent);
+    margin-right: 7px;
+  }
+
+  /* ---------- 子分类管理弹窗 ---------- */
+  .subcat-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+  .subcat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 8px;
+  }
+  .subcat-row input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--text);
+    padding: 4px 2px;
+  }
+  .subcat-row input:focus { outline: none; }
+  .subcat-row .mini-del {
+    border: none;
+    background: transparent;
+    color: var(--danger);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+    flex: 0 0 auto;
+  }
+  .subcat-add {
+    border: 1px dashed var(--border);
+    background: #fff;
+    color: var(--accent);
+    border-radius: 10px;
+    padding: 9px 0;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .subcat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 14px 0; }
+
+  /* ---------- 任务拖动排序 ---------- */
+  .reorder-tip { font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 10px; }
+  .reorder-list { display: flex; flex-direction: column; gap: 8px; }
+  .reorder-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 12px;
+    font-size: 14px;
+    color: var(--text);
+    touch-action: none;
+    cursor: grab;
+  }
+  .reorder-item.dragging {
+    background: #e7f0ff;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .14);
+    cursor: grabbing;
+    z-index: 5;
+  }
+  .reorder-item .grip { color: var(--muted); font-size: 18px; line-height: 1; flex: 0 0 auto; }
+  .reorder-item .r-name { flex: 1; }
+  .reorder-item .r-sub { font-size: 12px; color: var(--muted); }
 
   /* ---------- 任务按钮（每行 3 个） ---------- */
   .task-grid {
@@ -597,12 +682,12 @@
 
   function newTask() {
     /* 默认统计周期为一天，0 点自动清零 */
-    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0, reminders: [] };
+    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0, reminders: [], subId: null };
   }
 
   function defaultData() {
     var acc = { id: genId(), name: '账号1', categories: [] };
-    var cat = { id: genId(), name: '默认分类', tasks: [] };
+    var cat = { id: genId(), name: '默认分类', tasks: [], subcats: [] };
     for (var i = 0; i < 3; i++) cat.tasks.push(newTask());
     acc.categories.push(cat);
     return { activeAccountId: acc.id, accounts: [acc], clipboards: [] };
@@ -631,12 +716,14 @@
   function migrateReminders(d) {
     (d.accounts || []).forEach(function (acc) {
       (acc.categories || []).forEach(function (cat) {
+        if (!Array.isArray(cat.subcats)) cat.subcats = [];
         (cat.tasks || []).forEach(function (t) {
           if (t.remind && !t.reminders) {
             t.reminders = [{ id: 'r' + (t.id || '') + '-' + Date.now().toString(36), time: t.remind, repeat: 'daily', enabled: true }];
           }
           if (t.remind) delete t.remind;
           if (!Array.isArray(t.reminders)) t.reminders = [];
+          if (t.subId === undefined) t.subId = null;
         });
       });
     });
@@ -1124,6 +1211,20 @@
   function renderMain() {
     if (clipboardView) { renderClipboardPanel(); return; }
     var acc = activeAccount();
+    /* 清理空名称子分类，并把指向已删除子分类的任务回退到未分组 */
+    acc.categories.forEach(function (cat) {
+      if (!Array.isArray(cat.subcats)) cat.subcats = [];
+      var ids = {};
+      cat.subcats = cat.subcats.filter(function (s) {
+        s.name = (s.name || '').trim();
+        if (!s.name) return false;
+        ids[s.id] = true;
+        return true;
+      });
+      (cat.tasks || []).forEach(function (t) {
+        if (t.subId && !ids[t.subId]) t.subId = null;
+      });
+    });
     var main = document.getElementById('main');
     main.innerHTML = '';
     acc.categories.forEach(function (cat) {
@@ -1152,21 +1253,29 @@
       header.appendChild(more);
       section.appendChild(header);
 
-      var grid = document.createElement('div');
-      grid.className = 'task-grid';
-      cat.tasks.forEach(function (task) {
-        grid.appendChild(buildTaskButton(task, cat));
-      });
-      var addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'task-btn add-task-btn';
-      var addLabel = document.createElement('span');
-      addLabel.className = 't-name';
-      addLabel.textContent = '＋ 添加任务';
-      addBtn.appendChild(addLabel);
-      addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
-      grid.appendChild(addBtn);
-      section.appendChild(grid);
+      /* 按子分类分组渲染（无子分类时直接平铺） */
+      var subcatIds = cat.subcats.map(function (s) { return s.id; });
+      if (cat.subcats.length === 0) {
+        section.appendChild(buildTaskGrid(cat, cat.tasks, true));
+      } else {
+        cat.subcats.forEach(function (sc) {
+          var scTasks = cat.tasks.filter(function (t) { return t.subId === sc.id; });
+          if (!scTasks.length) return;
+          var sh = document.createElement('div');
+          sh.className = 'subcat-header';
+          sh.textContent = sc.name;
+          section.appendChild(sh);
+          section.appendChild(buildTaskGrid(cat, scTasks, false));
+        });
+        var ungrouped = cat.tasks.filter(function (t) {
+          return !t.subId || subcatIds.indexOf(t.subId) < 0;
+        });
+        var uh = document.createElement('div');
+        uh.className = 'subcat-header';
+        uh.textContent = '未分组';
+        section.appendChild(uh);
+        section.appendChild(buildTaskGrid(cat, ungrouped, true));
+      }
 
       main.appendChild(section);
     });
@@ -1230,6 +1339,27 @@
     btn.addEventListener('click', function () { onTaskClick(task); });
     attachLongPress(btn, function () { openTaskMenu(task, cat); });
     return btn;
+  }
+
+  /* 生成一组任务按钮的 3 列网格；withAdd 时在末尾追加「添加任务」入口 */
+  function buildTaskGrid(cat, tasks, withAdd) {
+    var grid = document.createElement('div');
+    grid.className = 'task-grid';
+    (tasks || []).forEach(function (task) {
+      grid.appendChild(buildTaskButton(task, cat));
+    });
+    if (withAdd) {
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'task-btn add-task-btn';
+      var addLabel = document.createElement('span');
+      addLabel.className = 't-name';
+      addLabel.textContent = '＋ 添加任务';
+      addBtn.appendChild(addLabel);
+      addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
+      grid.appendChild(addBtn);
+    }
+    return grid;
   }
 
   /* ================= 交互：点击与长按 ================= */
@@ -1483,13 +1613,21 @@
       isNewAddition = true;
     }
 
+    var fields = [
+      { key: 'name', label: '任务名称', type: 'text', value: isEdit ? task.name : '', placeholder: '请输入任务名称' },
+      { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 1, min: 1, max: 3650, placeholder: '1' }
+    ];
+    if (targetCat.subcats && targetCat.subcats.length) {
+      var subOptions = [{ value: '', label: '不分组' }].concat(targetCat.subcats.map(function (s) {
+        return { value: s.id, label: s.name };
+      }));
+      fields.push({ key: 'subId', label: '子分类', type: 'select', value: isEdit ? (task.subId || '') : '', options: subOptions });
+    }
+
     openFormDialog({
       title: isEdit ? '编辑任务' : '设置任务',
       dismissOnMask: isNewAddition ? false : true,
-      fields: [
-        { key: 'name', label: '任务名称', type: 'text', value: isEdit ? task.name : '', placeholder: '请输入任务名称' },
-        { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 1, min: 1, max: 3650, placeholder: '1' }
-      ],
+      fields: fields,
       confirmText: isEdit ? '保存' : '确定',
       onConfirm: function (v) {
         var name = (v.name || '').trim();
@@ -1500,6 +1638,7 @@
         task.configured = true;
         task.name = name;
         task.cycleDays = cycle;
+        task.subId = (targetCat.subcats && targetCat.subcats.length && v.subId) ? v.subId : null;
         save();
         render();
         toast(isEdit ? '已保存' : '设置完成，点击按钮记录完成');
@@ -2502,6 +2641,14 @@
         }
       },
       {
+        label: '添加 / 管理子分类',
+        onClick: function () { openSubcatManager(cat); }
+      },
+      {
+        label: '管理任务（拖动排序）',
+        onClick: function () { openTaskReorder(cat); }
+      },
+      {
         label: '删除分类',
         danger: true,
         onClick: function () {
@@ -2534,6 +2681,183 @@
         render();
       }
     });
+  }
+
+  /* ================= 子分类管理 ================= */
+  function openSubcatManager(cat) {
+    if (!Array.isArray(cat.subcats)) cat.subcats = [];
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '子分类 · ' + cat.name;
+      sheet.appendChild(h);
+
+      var list = document.createElement('div');
+      list.className = 'subcat-list';
+      sheet.appendChild(list);
+
+      function renderRows() {
+        list.innerHTML = '';
+        if (!cat.subcats.length) {
+          var empty = document.createElement('div');
+          empty.className = 'subcat-empty';
+          empty.textContent = '还没有子分类，点击下方按钮添加';
+          list.appendChild(empty);
+          return;
+        }
+        cat.subcats.forEach(function (sc, idx) {
+          var row = document.createElement('div');
+          row.className = 'subcat-row';
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.value = sc.name;
+          input.placeholder = '子分类名称';
+          input.addEventListener('input', function () { sc.name = input.value; });
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'mini-del';
+          del.textContent = '✕';
+          del.title = '删除子分类';
+          del.addEventListener('click', function () {
+            cat.subcats.splice(idx, 1);
+            cat.tasks.forEach(function (t) { if (t.subId === sc.id) t.subId = null; });
+            renderRows();
+            save();
+          });
+          row.appendChild(input);
+          row.appendChild(del);
+          list.appendChild(row);
+        });
+      }
+      renderRows();
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'subcat-add';
+      addBtn.textContent = '＋ 添加子分类';
+      addBtn.addEventListener('click', function () {
+        cat.subcats.push({ id: genId(), name: '' });
+        renderRows();
+        var inputs = list.querySelectorAll('.subcat-row input');
+        if (inputs.length) { try { inputs[inputs.length - 1].focus(); } catch (e) {} }
+      });
+      sheet.appendChild(addBtn);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'btn btn-primary';
+      done.textContent = '完成';
+      done.addEventListener('click', function () {
+        cat.subcats = cat.subcats.filter(function (s) { return (s.name || '').trim(); });
+        cat.subcats.forEach(function (s) { s.name = s.name.trim(); });
+        save();
+        close();
+        render();
+      });
+      actions.appendChild(done);
+      sheet.appendChild(actions);
+    }, { dismissOnMask: true });
+  }
+
+  /* ================= 任务拖动排序 ================= */
+  function openTaskReorder(cat) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '管理任务 · ' + cat.name;
+      sheet.appendChild(h);
+      var tip = document.createElement('div');
+      tip.className = 'reorder-tip';
+      tip.textContent = '长按并拖动调整顺序（仅限本分类内）';
+      sheet.appendChild(tip);
+
+      var list = document.createElement('div');
+      list.className = 'reorder-list';
+      sheet.appendChild(list);
+
+      function buildRows() {
+        list.innerHTML = '';
+        cat.tasks.forEach(function (task) {
+          var row = document.createElement('div');
+          row.className = 'reorder-item';
+          row.dataset.id = task.id;
+          var grip = document.createElement('span');
+          grip.className = 'grip';
+          grip.textContent = '≡';
+          var nm = document.createElement('span');
+          nm.className = 'r-name';
+          nm.textContent = task.configured ? task.name : '（未设置任务）';
+          var sb = document.createElement('span');
+          sb.className = 'r-sub';
+          sb.textContent = task.configured ? remainLabel(task) : '';
+          row.appendChild(grip);
+          row.appendChild(nm);
+          row.appendChild(sb);
+          list.appendChild(row);
+        });
+      }
+      buildRows();
+
+      var dragged = null;
+      function onMove(e) {
+        if (!dragged) return;
+        /* 依据指针 Y 直接定位目标槽位，将拖动项移动到对应位置 */
+        var y = e.clientY;
+        var rows = Array.prototype.slice.call(list.children);
+        var ref = null;
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i] === dragged) continue;
+          var rr = rows[i].getBoundingClientRect();
+          if (y < rr.top + rr.height / 2) { ref = rows[i]; break; }
+        }
+        if (ref) {
+          if (dragged.nextSibling !== ref) list.insertBefore(dragged, ref);
+        } else if (list.lastChild !== dragged) {
+          list.appendChild(dragged);
+        }
+      }
+      function onUp() {
+        if (!dragged) return;
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        dragged.classList.remove('dragging');
+        dragged = null;
+      }
+      list.addEventListener('pointerdown', function (e) {
+        var row = e.target.closest('.reorder-item');
+        if (!row) return;
+        e.preventDefault();
+        dragged = row;
+        row.classList.add('dragging');
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-ghost';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', function () { close(); });
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '保存顺序';
+      ok.addEventListener('click', function () {
+        var ids = Array.prototype.map.call(list.children, function (el) { return el.dataset.id; });
+        cat.tasks.sort(function (a, b) {
+          return ids.indexOf(a.id) - ids.indexOf(b.id);
+        });
+        save();
+        close();
+        render();
+        toast('顺序已保存');
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(ok);
+      sheet.appendChild(actions);
+    }, { dismissOnMask: true });
   }
 
   /* ================= Toast ================= */
