@@ -1012,6 +1012,8 @@
   }
 
   function isDone(task) { return task.configured && task.count > 0; }
+  /* 「未分组」保留条目 id：作为真实条目存于 cat.subcats，可改名/排序，其任务 subId 为 null */
+  var UNG_ID = '__ungrouped__';
 
   /* 周期到期自动清零：次数归零、按钮恢复未完成状态 */
   function checkCycles() {
@@ -1244,19 +1246,35 @@
   function renderMain() {
     if (clipboardView) { renderClipboardPanel(); return; }
     var acc = activeAccount();
-    /* 清理空名称子分类，并把指向已删除子分类的任务回退到未分组 */
+    /* 清理空名称子分类，并把指向已删除子分类的任务回退到未分组；
+       有子分类且存在未分组任务时，自动补上「未分组」保留条目（可改名/排序）；
+       若真实子分类已删光，则移除保留条目回退平铺 */
     acc.categories.forEach(function (cat) {
       if (!Array.isArray(cat.subcats)) cat.subcats = [];
       var ids = {};
       cat.subcats = cat.subcats.filter(function (s) {
         s.name = (s.name || '').trim();
-        if (!s.name) return false;
+        if (!s.name && s.id !== UNG_ID) return false;
         ids[s.id] = true;
         return true;
       });
       (cat.tasks || []).forEach(function (t) {
+        if (t.subId === UNG_ID) t.subId = null;
         if (t.subId && !ids[t.subId]) t.subId = null;
       });
+      var realCount = cat.subcats.filter(function (s) { return s.id !== UNG_ID; }).length;
+      if (!realCount) {
+        cat.subcats = [];
+      } else {
+        var hasUng = cat.subcats.some(function (s) { return s.id === UNG_ID; });
+        var hasUngTask = (cat.tasks || []).some(function (t) { return !t.subId; });
+        if (!hasUng && hasUngTask) {
+          cat.subcats.push({ id: UNG_ID, name: '未分组' });
+        } else if (hasUng) {
+          var ungEntry = cat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
+          if (!ungEntry.name) ungEntry.name = '未分组';
+        }
+      }
     });
     var main = document.getElementById('main');
     main.innerHTML = '';
@@ -1286,29 +1304,21 @@
       header.appendChild(more);
       section.appendChild(header);
 
-      /* 按子分类分组渲染（无子分类时直接平铺）；空分组也渲染，作为拖动放入的目标 */
-      var subcatIds = cat.subcats.map(function (s) { return s.id; });
+      /* 按子分类分组渲染（含「未分组」保留条目，按管理界面排序）；无子分类时直接平铺 */
       if (cat.subcats.length === 0) {
         section.appendChild(buildTaskGrid(cat, cat.tasks, true, ''));
       } else {
         cat.subcats.forEach(function (sc) {
-          var scTasks = cat.tasks.filter(function (t) { return t.subId === sc.id; });
+          var isUng = sc.id === UNG_ID;
+          var scTasks = isUng
+            ? cat.tasks.filter(function (t) { return !t.subId; })
+            : cat.tasks.filter(function (t) { return t.subId === sc.id; });
           var sh = document.createElement('div');
           sh.className = 'subcat-header';
           sh.textContent = sc.name;
           section.appendChild(sh);
-          section.appendChild(buildTaskGrid(cat, scTasks, false, sc.id));
+          section.appendChild(buildTaskGrid(cat, scTasks, isUng, sc.id));
         });
-        var ungrouped = cat.tasks.filter(function (t) {
-          return !t.subId || subcatIds.indexOf(t.subId) < 0;
-        });
-        if (ungrouped.length) {
-          var uh = document.createElement('div');
-          uh.className = 'subcat-header';
-          uh.textContent = '未分组';
-          section.appendChild(uh);
-        }
-        section.appendChild(buildTaskGrid(cat, ungrouped, true, ''));
       }
 
       main.appendChild(section);
@@ -1582,6 +1592,7 @@
       var newTasks = [];
       grids.forEach(function (g) {
         var subId = g.dataset.subId || null;
+        if (subId === UNG_ID) subId = null;
         g.querySelectorAll('.task-btn:not(.add-task-btn)').forEach(function (b) {
           var t = null;
           for (var k = 0; k < cat.tasks.length; k++) {
@@ -1844,9 +1855,12 @@
       { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 1, min: 1, max: 3650, placeholder: '1' }
     ];
     if (targetCat.subcats && targetCat.subcats.length) {
-      var subOptions = [{ value: '', label: '不分组' }].concat(targetCat.subcats.map(function (s) {
-        return { value: s.id, label: s.name };
-      }));
+      var ungEntry = targetCat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
+      var subOptions = [{ value: '', label: (ungEntry && ungEntry.name) || '不分组' }].concat(
+        targetCat.subcats.filter(function (s) { return s.id !== UNG_ID; }).map(function (s) {
+          return { value: s.id, label: s.name };
+        })
+      );
       fields.push({ key: 'subId', label: '子分类', type: 'select', value: isEdit ? (task.subId || '') : '', options: subOptions });
     }
 
@@ -2985,6 +2999,7 @@
           return;
         }
         cat.subcats.forEach(function (sc) {
+          var isUng = sc.id === UNG_ID;
           var row = document.createElement('div');
           row.className = 'subcat-row';
           row.dataset.sid = sc.id;
@@ -3009,6 +3024,7 @@
             renderRows();
             save();
           });
+          if (isUng) del.style.visibility = 'hidden';
           row.appendChild(grip);
           row.appendChild(input);
           row.appendChild(del);
@@ -3045,8 +3061,11 @@
       done.className = 'btn btn-primary';
       done.textContent = '完成';
       done.addEventListener('click', function () {
-        cat.subcats = cat.subcats.filter(function (s) { return (s.name || '').trim(); });
-        cat.subcats.forEach(function (s) { s.name = s.name.trim(); });
+        cat.subcats = cat.subcats.filter(function (s) {
+          if (s.id === UNG_ID) { s.name = (s.name || '').trim() || '未分组'; return true; }
+          return (s.name || '').trim();
+        });
+        cat.subcats.forEach(function (s) { if (s.id !== UNG_ID) s.name = s.name.trim(); });
         save();
         close();
         render();
