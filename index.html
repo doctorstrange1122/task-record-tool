@@ -651,6 +651,31 @@
   var CLIP_EXPIRE_MS = 48 * 3600 * 1000; /* 记录保存 48 小时 */
   var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
   var clipboardView = false;             /* 当前是否显示剪贴板面板 */
+  var TAB_KEY = 'taskRecordTool.tab';     /* 记住上次停留的 tab */
+
+  /* 保存当前激活 tab（剪贴板 / 某个账号）到本地 */
+  function saveActiveTab() {
+    try {
+      localStorage.setItem(TAB_KEY, JSON.stringify({
+        clip: clipboardView,
+        accId: clipboardView ? null : data.activeAccountId
+      }));
+    } catch (e) {}
+  }
+
+  /* 启动时恢复上次停留的 tab；若记录的账号已不存在则回退到首个账号 */
+  function restoreActiveTab() {
+    try {
+      var raw = localStorage.getItem(TAB_KEY);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (s.clip) {
+        clipboardView = true;
+      } else if (s.accId && data.accounts.some(function (a) { return a.id === s.accId; })) {
+        data.activeAccountId = s.accId;
+      }
+    } catch (e) {}
+  }
 
   function clipFresh(c) {
     return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
@@ -1059,6 +1084,7 @@
     clipTab.addEventListener('click', function () {
       if (suppressClick) { suppressClick = false; return; }
       clipboardView = true;
+      saveActiveTab();
       render();
     });
     bar.appendChild(clipTab);
@@ -1069,11 +1095,12 @@
       tab.textContent = acc.name;
       tab.title = acc.name + '（长按可重命名/删除）';
       tab.addEventListener('click', function () {
-        if (suppressClick) { suppressClick = false; return; }
-        clipboardView = false;
-        data.activeAccountId = acc.id;
-        save();
-        render();
+      if (suppressClick) { suppressClick = false; return; }
+      clipboardView = false;
+      data.activeAccountId = acc.id;
+      saveActiveTab();
+      save();
+      render();
       });
       attachLongPress(tab, function () { openAccountMenu(acc); });
       if (!clipboardView && acc.id === data.activeAccountId) activeTab = tab;
@@ -2713,6 +2740,7 @@
 
   /* ================= 启动 ================= */
   bindHeaderButtons();
+  restoreActiveTab();
   checkCycles();
   if (pruneClipboards()) save();
   render();
