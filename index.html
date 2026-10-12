@@ -62,11 +62,11 @@
     white-space: nowrap;
   }
   .head-pill {
-    border: 1px solid var(--border);
-    background: #f8f9fa;
-    color: var(--text);
+    border: none;
+    background: var(--accent);
+    color: #fff;
     font-size: 12px;
-    padding: 6px 10px;
+    padding: 6px 12px;
     border-radius: 999px;
     cursor: pointer;
     white-space: nowrap;
@@ -75,7 +75,7 @@
     text-overflow: ellipsis;
     flex: 0 0 auto;
   }
-  .head-pill:active { background: #eef1f4; }
+  .head-pill:active { background: #2b8de0; }
   .head-pill:disabled { opacity: .6; cursor: default; }
   #installBtn { justify-self: start; }
   #authBtn { justify-self: end; max-width: 36vw; }
@@ -437,28 +437,47 @@
     word-break: break-all;
   }
   .remind-pop-meta { text-align: center; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .remind-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 12px 0 4px;
+  }
   .remind-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 10px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    margin-bottom: 8px;
-    background: #f8f9fa;
-    font-size: 13px;
+    justify-content: space-between;
+    gap: 4px;
+    height: 26px;
+    padding: 0 4px 0 8px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11.5px;
   }
-  .remind-item .r-label { flex: 1; line-height: 1.35; }
+  .remind-item .r-label {
+    flex: 1;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .remind-item .r-del {
     border: none;
-    background: #fee2e2;
-    color: var(--danger);
-    border-radius: 8px;
-    width: 28px;
-    height: 28px;
-    font-size: 14px;
+    background: rgba(255, 255, 255, .28);
+    color: #fff;
+    border-radius: 6px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    line-height: 1;
     cursor: pointer;
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
   .seg {
     display: flex;
@@ -2287,20 +2306,20 @@
         }
         sheet.appendChild(apkBox);
 
-        var dl = document.createElement('a');
-        dl.href = APK_DOWNLOAD_URL;
+        var dl = document.createElement('button');
+        dl.type = 'button';
         dl.textContent = '↓ 下载 App（APK）';
-        dl.setAttribute('download', '');
         dl.style.cssText = 'display:block;text-align:center;margin:8px 0 2px;padding:9px 0;' +
-          'border-radius:10px;background:#FF7A00;color:#fff;text-decoration:none;' +
-          'font-size:13.5px;font-weight:600;';
+          'border:none;border-radius:10px;background:#FF7A00;color:#fff;text-decoration:none;' +
+          'font-size:13.5px;font-weight:600;cursor:pointer;';
         if (IN_APP) dl.style.display = 'none';
+        dl.addEventListener('click', function () { toast('暂未上线'); });
         sheet.appendChild(dl);
       }
 
       /* 已有提醒列表 */
       var listWrap = document.createElement('div');
-      listWrap.style.margin = '12px 0 4px';
+      listWrap.className = 'remind-grid';
       function paintList() {
         listWrap.innerHTML = '';
         if (!list.length) {
@@ -2832,10 +2851,6 @@
         onClick: function () { openSubcatManager(cat); }
       },
       {
-        label: '添加 / 管理子分类',
-        onClick: function () { openSubcatManager(cat); }
-      },
-      {
         label: '删除分类',
         danger: true,
         onClick: function () {
@@ -2977,13 +2992,13 @@
         '<br>• 无需保持页面打开<br>• 不依赖 Google 推送服务<br>• 国内网络可正常使用';
       sheet.appendChild(why);
 
-      var dl = document.createElement('a');
-      dl.href = APK_DOWNLOAD_URL;
+      var dl = document.createElement('button');
+      dl.type = 'button';
       dl.textContent = '↓ 下载 APK 安装包';
-      dl.setAttribute('download', '');
       dl.style.cssText = 'display:block;text-align:center;margin:12px 0 4px;padding:11px 0;' +
-        'border-radius:10px;background:#FF7A00;color:#fff;text-decoration:none;' +
-        'font-size:14px;font-weight:600;';
+        'border:none;border-radius:10px;background:#FF7A00;color:#fff;' +
+        'font-size:14px;font-weight:600;cursor:pointer;';
+      dl.addEventListener('click', function () { toast('暂未上线'); });
       sheet.appendChild(dl);
 
       var note = document.createElement('p');
