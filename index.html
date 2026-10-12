@@ -335,9 +335,7 @@
 
   /* ---------- 任务按钮拖动（手机桌面风格） ---------- */
   .task-btn.drag-origin {
-    opacity: .35;
-    outline: 1.5px dashed var(--muted);
-    outline-offset: -1.5px;
+    visibility: hidden;
   }
   .drag-clone {
     position: fixed;
@@ -1267,10 +1265,9 @@
         cat.subcats = [];
       } else {
         var hasUng = cat.subcats.some(function (s) { return s.id === UNG_ID; });
-        var hasUngTask = (cat.tasks || []).some(function (t) { return !t.subId; });
-        if (!hasUng && hasUngTask) {
+        if (!hasUng) {
           cat.subcats.push({ id: UNG_ID, name: '未分组' });
-        } else if (hasUng) {
+        } else {
           var ungEntry = cat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
           if (!ungEntry.name) ungEntry.name = '未分组';
         }
