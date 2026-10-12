@@ -317,31 +317,27 @@
   }
   .subcat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 14px 0; }
 
-  /* ---------- 任务拖动排序 ---------- */
-  .reorder-tip { font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 10px; }
-  .reorder-list { display: flex; flex-direction: column; gap: 8px; }
-  .reorder-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--card);
-    border: 1px solid var(--border);
+  /* ---------- 任务按钮拖动（手机桌面风格） ---------- */
+  .task-btn.drag-origin {
+    opacity: .35;
+    outline: 1.5px dashed var(--muted);
+    outline-offset: -1.5px;
+  }
+  .drag-clone {
+    position: fixed;
+    z-index: 999;
+    pointer-events: none;
+    margin: 0;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .28);
+    opacity: .96;
+    transform: scale(1.06);
+    transition: none;
+  }
+  .task-grid.empty {
+    min-height: 56px;
+    border: 1.5px dashed var(--border);
     border-radius: 12px;
-    padding: 12px 12px;
-    font-size: 14px;
-    color: var(--text);
-    touch-action: none;
-    cursor: grab;
   }
-  .reorder-item.dragging {
-    background: #e7f0ff;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .14);
-    cursor: grabbing;
-    z-index: 5;
-  }
-  .reorder-item .grip { color: var(--muted); font-size: 18px; line-height: 1; flex: 0 0 auto; }
-  .reorder-item .r-name { flex: 1; }
-  .reorder-item .r-sub { font-size: 12px; color: var(--muted); }
 
   /* ---------- 任务按钮（每行 3 个） ---------- */
   .task-grid {
@@ -1253,19 +1249,18 @@
       header.appendChild(more);
       section.appendChild(header);
 
-      /* 按子分类分组渲染（无子分类时直接平铺） */
+      /* 按子分类分组渲染（无子分类时直接平铺）；空分组也渲染，作为拖动放入的目标 */
       var subcatIds = cat.subcats.map(function (s) { return s.id; });
       if (cat.subcats.length === 0) {
-        section.appendChild(buildTaskGrid(cat, cat.tasks, true));
+        section.appendChild(buildTaskGrid(cat, cat.tasks, true, ''));
       } else {
         cat.subcats.forEach(function (sc) {
           var scTasks = cat.tasks.filter(function (t) { return t.subId === sc.id; });
-          if (!scTasks.length) return;
           var sh = document.createElement('div');
           sh.className = 'subcat-header';
           sh.textContent = sc.name;
           section.appendChild(sh);
-          section.appendChild(buildTaskGrid(cat, scTasks, false));
+          section.appendChild(buildTaskGrid(cat, scTasks, false, sc.id));
         });
         var ungrouped = cat.tasks.filter(function (t) {
           return !t.subId || subcatIds.indexOf(t.subId) < 0;
@@ -1274,7 +1269,7 @@
         uh.className = 'subcat-header';
         uh.textContent = '未分组';
         section.appendChild(uh);
-        section.appendChild(buildTaskGrid(cat, ungrouped, true));
+        section.appendChild(buildTaskGrid(cat, ungrouped, true, ''));
       }
 
       main.appendChild(section);
@@ -1299,6 +1294,7 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'task-btn';
+    btn.dataset.taskId = task.id;
 
     if (!task.configured) {
       btn.classList.add('unset');
@@ -1337,17 +1333,19 @@
     }
 
     btn.addEventListener('click', function () { onTaskClick(task); });
-    attachLongPress(btn, function () { openTaskMenu(task, cat); });
+    attachTaskDrag(btn, task, cat);
     return btn;
   }
 
   /* 生成一组任务按钮的 3 列网格；withAdd 时在末尾追加「添加任务」入口 */
-  function buildTaskGrid(cat, tasks, withAdd) {
+  function buildTaskGrid(cat, tasks, withAdd, subId) {
     var grid = document.createElement('div');
     grid.className = 'task-grid';
+    grid.dataset.subId = subId == null ? '' : subId;
     (tasks || []).forEach(function (task) {
       grid.appendChild(buildTaskButton(task, cat));
     });
+    if (!(tasks || []).length) grid.classList.add('empty');
     if (withAdd) {
       var addBtn = document.createElement('button');
       addBtn.type = 'button';
@@ -1433,6 +1431,195 @@
     el.addEventListener('mouseleave', cancel);
     /* 抑制系统长按菜单（移动端） */
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  /* ================= 任务按钮拖动（手机桌面风格） =================
+     长按按钮进入「可拖动」状态：
+       · 进入后不动 → 松手即弹出任务管理菜单（沿用原长按菜单）。
+       · 进入后移动手指 → 跟随手指拖动，可跨子分类（同一大分类内）自由摆放，
+         松手落位后即时保存；拖出分类范围则回到原位。
+     单击按钮仍正常记录完成，互不冲突。 */
+  function attachTaskDrag(btn, task, cat) {
+    var press = null;
+
+    function startPress(x, y) {
+      if (press) return;
+      press = { x: x, y: y, ready: false, dragging: false, timer: null, clone: null, offX: 0, offY: 0 };
+      press.timer = setTimeout(function () {
+        if (!press) return;
+        press.timer = null;
+        press.ready = true;
+        swallowNextClick(btn);
+        try {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
+          else if (sel && sel.empty) sel.empty();
+        } catch (e) {}
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+      }, LONG_PRESS_MS);
+    }
+
+    function cancelPress() {
+      if (!press) return;
+      if (press.timer) clearTimeout(press.timer);
+      if (press.clone && press.clone.parentNode) press.clone.parentNode.removeChild(press.clone);
+      btn.classList.remove('drag-origin');
+      press = null;
+    }
+
+    function startDrag(x, y) {
+      var r = btn.getBoundingClientRect();
+      press.dragging = true;
+      press.offX = x - r.left;
+      press.offY = y - r.top;
+      var clone = btn.cloneNode(true);
+      clone.className = btn.className;
+      clone.classList.add('drag-clone');
+      clone.style.width = r.width + 'px';
+      clone.style.height = r.height + 'px';
+      clone.style.left = r.left + 'px';
+      clone.style.top = r.top + 'px';
+      document.body.appendChild(clone);
+      press.clone = clone;
+      btn.classList.add('drag-origin');
+      moveDrag(x, y);
+    }
+
+    function moveDrag(x, y) {
+      if (!press || !press.dragging) return;
+      press.clone.style.left = (x - press.offX) + 'px';
+      press.clone.style.top = (y - press.offY) + 'px';
+      reposition(x, y);
+      autoScroll(y);
+    }
+
+    function autoScroll(y) {
+      var m = 56;
+      if (y < m) window.scrollBy(0, -(m - y) * 0.4);
+      else if (y > window.innerHeight - m) window.scrollBy(0, (y - (window.innerHeight - m)) * 0.4);
+    }
+
+    function reposition(x, y) {
+      var section = btn.closest('section.category');
+      if (!section) return;
+      var grids = section.querySelectorAll('.task-grid');
+      var targetGrid = null;
+      for (var i = 0; i < grids.length; i++) {
+        var gr = grids[i].getBoundingClientRect();
+        if (x >= gr.left && x <= gr.right && y >= gr.top - 10 && y <= gr.bottom + 10) { targetGrid = grids[i]; break; }
+      }
+      if (!targetGrid) return; /* 拖出该分类范围，保持原位 */
+
+      var buttons = targetGrid.querySelectorAll('.task-btn:not(.add-task-btn):not(.drag-origin)');
+      var best = null, bestD = Infinity;
+      for (var j = 0; j < buttons.length; j++) {
+        var br = buttons[j].getBoundingClientRect();
+        var cx = br.left + br.width / 2, cy = br.top + br.height / 2;
+        var d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+        if (d < bestD) { bestD = d; best = buttons[j]; }
+      }
+      var addBtn = targetGrid.querySelector('.add-task-btn');
+      if (!best) {
+        if (addBtn) targetGrid.insertBefore(btn, addBtn);
+        else targetGrid.appendChild(btn);
+        return;
+      }
+      var be = best.getBoundingClientRect();
+      if (x < be.left + be.width / 2) {
+        targetGrid.insertBefore(btn, best);
+      } else {
+        var next = best.nextSibling;
+        if (next && next.classList && next.classList.contains('add-task-btn')) targetGrid.insertBefore(btn, next);
+        else if (next && next !== btn) targetGrid.insertBefore(btn, next);
+        else if (addBtn) targetGrid.insertBefore(btn, addBtn);
+        else targetGrid.appendChild(btn);
+      }
+    }
+
+    function commitGridOrder() {
+      var section = btn.closest('section.category');
+      if (!section) return;
+      var grids = section.querySelectorAll('.task-grid');
+      var newTasks = [];
+      grids.forEach(function (g) {
+        var subId = g.dataset.subId || null;
+        g.querySelectorAll('.task-btn:not(.add-task-btn)').forEach(function (b) {
+          var t = null;
+          for (var k = 0; k < cat.tasks.length; k++) {
+            if (cat.tasks[k].id === b.dataset.taskId) { t = cat.tasks[k]; break; }
+          }
+          if (!t) return;
+          t.subId = subId;
+          newTasks.push(t);
+        });
+      });
+      if (newTasks.length) cat.tasks = newTasks;
+    }
+
+    function endPress() {
+      if (!press) return;
+      var p = press;
+      if (p.timer) clearTimeout(p.timer);
+      if (p.dragging) {
+        if (p.clone && p.clone.parentNode) p.clone.parentNode.removeChild(p.clone);
+        btn.classList.remove('drag-origin');
+        press = null;
+        commitGridOrder();
+        save();
+        render();
+        toast('位置已保存');
+        return;
+      }
+      if (p.ready) {
+        press = null;
+        openTaskMenu(task, cat);
+        return;
+      }
+      press = null;
+    }
+
+    /* ---- 触摸（移动端） ---- */
+    btn.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { cancelPress(); return; }
+      var t = e.touches[0];
+      startPress(t.clientX, t.clientY);
+    }, { passive: true });
+    btn.addEventListener('touchmove', function (e) {
+      if (!press) return;
+      var t = e.touches[0];
+      if (!press.ready) {
+        if (Math.abs(t.clientX - press.x) > 10 || Math.abs(t.clientY - press.y) > 10) cancelPress();
+        return;
+      }
+      e.preventDefault(); /* 阻止页面滚动，进入拖动 */
+      if (!press.dragging) startDrag(t.clientX, t.clientY);
+      else moveDrag(t.clientX, t.clientY);
+    }, { passive: false });
+    btn.addEventListener('touchend', function () { endPress(); });
+    btn.addEventListener('touchcancel', function () { cancelPress(); });
+
+    /* ---- 鼠标（桌面端） ---- */
+    btn.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      startPress(e.clientX, e.clientY);
+      function mm(ev) {
+        if (!press) { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); return; }
+        if (!press.ready) {
+          if (Math.abs(ev.clientX - press.x) > 10 || Math.abs(ev.clientY - press.y) > 10) { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); cancelPress(); }
+          return;
+        }
+        if (!press.dragging) startDrag(ev.clientX, ev.clientY);
+        else moveDrag(ev.clientX, ev.clientY);
+      }
+      function mu() {
+        document.removeEventListener('mousemove', mm);
+        document.removeEventListener('mouseup', mu);
+        endPress();
+      }
+      document.addEventListener('mousemove', mm);
+      document.addEventListener('mouseup', mu);
+    });
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
 
   /* ================= 弹窗基础 ================= */
@@ -2645,8 +2832,8 @@
         onClick: function () { openSubcatManager(cat); }
       },
       {
-        label: '管理任务（拖动排序）',
-        onClick: function () { openTaskReorder(cat); }
+        label: '添加 / 管理子分类',
+        onClick: function () { openSubcatManager(cat); }
       },
       {
         label: '删除分类',
@@ -2756,106 +2943,6 @@
         render();
       });
       actions.appendChild(done);
-      sheet.appendChild(actions);
-    }, { dismissOnMask: true });
-  }
-
-  /* ================= 任务拖动排序 ================= */
-  function openTaskReorder(cat) {
-    openModal(function (sheet, close) {
-      var h = document.createElement('h3');
-      h.textContent = '管理任务 · ' + cat.name;
-      sheet.appendChild(h);
-      var tip = document.createElement('div');
-      tip.className = 'reorder-tip';
-      tip.textContent = '长按并拖动调整顺序（仅限本分类内）';
-      sheet.appendChild(tip);
-
-      var list = document.createElement('div');
-      list.className = 'reorder-list';
-      sheet.appendChild(list);
-
-      function buildRows() {
-        list.innerHTML = '';
-        cat.tasks.forEach(function (task) {
-          var row = document.createElement('div');
-          row.className = 'reorder-item';
-          row.dataset.id = task.id;
-          var grip = document.createElement('span');
-          grip.className = 'grip';
-          grip.textContent = '≡';
-          var nm = document.createElement('span');
-          nm.className = 'r-name';
-          nm.textContent = task.configured ? task.name : '（未设置任务）';
-          var sb = document.createElement('span');
-          sb.className = 'r-sub';
-          sb.textContent = task.configured ? remainLabel(task) : '';
-          row.appendChild(grip);
-          row.appendChild(nm);
-          row.appendChild(sb);
-          list.appendChild(row);
-        });
-      }
-      buildRows();
-
-      var dragged = null;
-      function onMove(e) {
-        if (!dragged) return;
-        /* 依据指针 Y 直接定位目标槽位，将拖动项移动到对应位置 */
-        var y = e.clientY;
-        var rows = Array.prototype.slice.call(list.children);
-        var ref = null;
-        for (var i = 0; i < rows.length; i++) {
-          if (rows[i] === dragged) continue;
-          var rr = rows[i].getBoundingClientRect();
-          if (y < rr.top + rr.height / 2) { ref = rows[i]; break; }
-        }
-        if (ref) {
-          if (dragged.nextSibling !== ref) list.insertBefore(dragged, ref);
-        } else if (list.lastChild !== dragged) {
-          list.appendChild(dragged);
-        }
-      }
-      function onUp() {
-        if (!dragged) return;
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        dragged.classList.remove('dragging');
-        dragged = null;
-      }
-      list.addEventListener('pointerdown', function (e) {
-        var row = e.target.closest('.reorder-item');
-        if (!row) return;
-        e.preventDefault();
-        dragged = row;
-        row.classList.add('dragging');
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', onUp);
-      });
-
-      var actions = document.createElement('div');
-      actions.className = 'sheet-actions';
-      var cancel = document.createElement('button');
-      cancel.type = 'button';
-      cancel.className = 'btn btn-ghost';
-      cancel.textContent = '取消';
-      cancel.addEventListener('click', function () { close(); });
-      var ok = document.createElement('button');
-      ok.type = 'button';
-      ok.className = 'btn btn-primary';
-      ok.textContent = '保存顺序';
-      ok.addEventListener('click', function () {
-        var ids = Array.prototype.map.call(list.children, function (el) { return el.dataset.id; });
-        cat.tasks.sort(function (a, b) {
-          return ids.indexOf(a.id) - ids.indexOf(b.id);
-        });
-        save();
-        close();
-        render();
-        toast('顺序已保存');
-      });
-      actions.appendChild(cancel);
-      actions.appendChild(ok);
       sheet.appendChild(actions);
     }, { dismissOnMask: true });
   }
