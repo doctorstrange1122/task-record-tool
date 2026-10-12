@@ -357,7 +357,7 @@
   .task-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: 18px 8px;
   }
   .task-btn {
     position: relative;
@@ -377,7 +377,7 @@
     transition: transform .1s, background .2s;
     user-select: none;
     -webkit-user-select: none;
-    overflow: hidden;
+    overflow: visible;
     word-break: break-all;
   }
   .task-btn:active { transform: scale(.96); }
@@ -397,45 +397,44 @@
     overflow: hidden;
   }
   .task-btn .t-sub { font-size: 10px; opacity: .85; font-weight: 400; }
-  /* 角标（完成计数）与提醒铃铛统一放在右上角容器内 flex 排列，互不重叠 */
-  .task-btn .t-marks {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    pointer-events: none;
-  }
+  /* 提醒铃铛（左上）与次数角标（右上）分别跨出按钮上边缘，不占按钮内部空间、互不遮挡 */
   .task-btn .badge {
-    min-width: 14px;
-    height: 14px;
+    position: absolute;
+    top: -13px;
+    right: -5px;
+    min-width: 16px;
+    height: 15px;
     border-radius: 999px;
     background: var(--danger);
     color: #fff;
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 3px;
+    padding: 0 4px;
     line-height: 1;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    pointer-events: none;
+    z-index: 2;
   }
   .task-btn .t-bell {
-    width: 12px;
-    height: 12px;
+    position: absolute;
+    top: -12px;
+    left: -5px;
+    width: 16px;
+    height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: .95;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25));
+    background: rgba(255, 255, 255, .92);
+    border-radius: 999px;
+    color: #495057;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
     pointer-events: none;
+    z-index: 2;
   }
-  .task-btn .t-bell svg { width: 12px; height: 12px; display: block; }
-  /* 有标记时按钮整体左移让位，名称与副文案不再被角标/铃铛压住 */
-  .task-btn.has-mark { padding-right: 32px; }
-  .task-btn.has-mark .t-sub { font-size: 9.5px; }
+  .task-btn .t-bell svg { width: 11px; height: 11px; display: block; }
   /* ---------- 应用内提醒弹窗 ---------- */
   .remind-bell {
     width: 76px;
@@ -1374,26 +1373,21 @@
       sub.textContent = remainLabel(task);
       btn.appendChild(name);
       btn.appendChild(sub);
+      if (task.count > 0) {
+        /* 次数角标：跨出按钮右上边缘 */
+        var badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = String(task.count);
+        btn.appendChild(badge);
+      }
       var activeReminders = (task.reminders || []).filter(function (r) { return r.enabled !== false; });
-      if (task.count > 0 || activeReminders.length) {
-        /* 角标与铃铛放进同一右上角容器，flex 排列不会互相压盖 */
-        var marks = document.createElement('span');
-        marks.className = 't-marks';
-        if (task.count > 0) {
-          var badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = String(task.count);
-          marks.appendChild(badge);
-        }
-        if (activeReminders.length) {
-          var bell = document.createElement('span');
-          bell.className = 't-bell';
-          bell.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
-          bell.title = taskRemindSummary(task);
-          marks.appendChild(bell);
-        }
-        btn.classList.add('has-mark');
-        btn.appendChild(marks);
+      if (activeReminders.length) {
+        /* 提醒铃铛：跨出按钮左上边缘 */
+        var bell = document.createElement('span');
+        bell.className = 't-bell';
+        bell.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+        bell.title = taskRemindSummary(task);
+        btn.appendChild(bell);
       }
     }
 
