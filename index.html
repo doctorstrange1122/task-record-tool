@@ -400,7 +400,7 @@
   /* 提醒铃铛（左上）与次数角标（右上）分别跨出按钮上边缘，不占按钮内部空间、互不遮挡 */
   .task-btn .badge {
     position: absolute;
-    top: -13px;
+    top: -8px;
     right: -5px;
     min-width: 16px;
     height: 15px;
@@ -420,10 +420,10 @@
   }
   .task-btn .t-bell {
     position: absolute;
-    top: -12px;
-    left: -5px;
-    width: 16px;
-    height: 16px;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -435,6 +435,9 @@
     z-index: 2;
   }
   .task-btn .t-bell svg { width: 11px; height: 11px; display: block; }
+  /* 铃铛在按钮内左上角，名称/副文案左侧留白避让 */
+  .task-btn.has-bell .t-name,
+  .task-btn.has-bell .t-sub { padding-left: 13px; }
   /* ---------- 应用内提醒弹窗 ---------- */
   .remind-bell {
     width: 76px;
@@ -1387,6 +1390,7 @@
         bell.className = 't-bell';
         bell.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
         bell.title = taskRemindSummary(task);
+        btn.classList.add('has-bell');
         btn.appendChild(bell);
       }
     }
