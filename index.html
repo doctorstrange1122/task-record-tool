@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<title>任务记录工具</title>
+<style>
+  :root {
+    --gray: #9aa5b1;
+    --green: #2f9e44;
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #212529;
+    --muted: #868e96;
+    --accent: #339af0;
+    --accent-deep: #1c7ed6;
+    --danger: #e03131;
+    --border: #e9ecef;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  button { font-family: inherit; }
+
+  /* ---------- 顶部标题与账号 Tab ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(255, 255, 255, .94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding-top: env(safe-area-inset-top);
+  }
+  h1 {
+    font-size: 19px;
+    font-weight: 700;
+    text-align: center;
+    padding: 14px 16px 10px;
+    letter-spacing: .5px;
+  }
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    background: #f1f3f5;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .tab.add-tab {
+    background: #fff;
+    border-style: dashed;
+    border-color: #adb5bd;
+    color: var(--accent);
+    font-weight: 700;
+    padding: 7px 13px;
+  }
+
+  /* ---------- 主体：分类容器 ---------- */
+  main { max-width: 720px; margin: 0 auto; padding: 14px 12px 0; }
+  .category {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .06);
+  }
+  .cat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .cat-name { font-size: 15px; font-weight: 700; }
+  .cat-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .icon-btn {
+    border: none;
+    background: #f1f3f5;
+    color: var(--muted);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .icon-btn:active { background: #e9ecef; }
+
+  /* ---------- 任务按钮（每行 3 个） ---------- */
+  .task-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .task-btn {
+    position: relative;
+    border: none;
+    border-radius: 12px;
+    min-height: 78px;
+    padding: 10px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #fff;
+    background: var(--gray);
+    transition: transform .1s, background .2s;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+    word-break: break-all;
+  }
+  .task-btn:active { transform: scale(.96); }
+  .task-btn.done { background: var(--green); }
+  .task-btn.unset {
+    background: #f1f3f5;
+    color: var(--muted);
+    border: 1.5px dashed #ced4da;
+  }
+  .task-btn .t-name {
+    font-weight: 600;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .task-btn .t-sub { font-size: 11px; opacity: .85; font-weight: 400; }
+  .task-btn .badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+  }
+  .add-task-btn {
+    background: #fff !important;
+    color: var(--muted) !important;
+    border: 1.5px dashed #ced4da;
+    font-size: 13px;
+    font-weight: 400 !important;
+  }
+  .add-cat-btn {
+    width: 100%;
+    border: 1.5px dashed #ced4da;
+    background: transparent;
+    color: var(--muted);
+    border-radius: var(--radius);
+    padding: 13px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-bottom: 14px;
+  }
+  .add-cat-btn:active { background: #eef1f4; }
+
+  /* ---------- 弹窗 ---------- */
+  .mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .45);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn .15s ease;
+  }
+  @media (min-width: 480px) { .mask { align-items: center; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    background: #fff;
+    border-radius: 18px 18px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+    animation: slideUp .2s ease;
+  }
+  @media (min-width: 480px) { .sheet { border-radius: 18px; margin: 0 16px; } }
+  @keyframes slideUp { from { transform: translateY(30px); opacity: .6; } to { transform: none; opacity: 1; } }
+  .sheet h3 { font-size: 16px; margin-bottom: 14px; text-align: center; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); background: #fff; }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .btn {
+    flex: 1;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn:active { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: #f1f3f5; color: var(--text); }
+  .btn-danger { background: #fff0f0; color: var(--danger); }
+  .menu-list { display: flex; flex-direction: column; }
+  .menu-item {
+    border: none;
+    background: #fff;
+    text-align: left;
+    padding: 14px 6px;
+    font-size: 15px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    border-radius: 8px;
+    color: var(--text);
+  }
+  .menu-item:last-child { border-bottom: none; }
+  .menu-item:active { background: #f8f9fa; }
+  .menu-item.danger { color: var(--danger); }
+  .counter-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin: 10px 0 4px;
+  }
+  .counter-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: #f1f3f5;
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--text);
+    flex: 0 0 auto;
+  }
+  .counter-btn:active { background: #e9ecef; }
+  input.counter-val {
+    border: 1px solid var(--border);
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 10px;
+    font-size: 24px;
+    font-weight: 700;
+    width: 92px;
+    text-align: center;
+    color: var(--text);
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  input.counter-val::-webkit-outer-spin-button,
+  input.counter-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 10px; line-height: 1.7; }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 90px;
+    transform: translateX(-50%);
+    background: rgba(33, 37, 41, .9);
+    color: #fff;
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    z-index: 200;
+    animation: fadeIn .15s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: 86vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>任务记录工具</h1>
+  <nav class="tab-bar" id="tabBar"></nav>
+</header>
+
+<main id="main"></main>
+<div id="modalRoot"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 常量与状态 ================= */
+  var STORAGE_KEY = 'taskRecordTool.v1';
+  var DAY = 86400000;
+  var LONG_PRESS_MS = 500;
+  var MAX_COUNT = 9999;
+
+  var data = loadData();
+
+  /* ================= 数据层 ================= */
+  function genId() {
+    return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newTask() {
+    return { id: genId(), configured: false, name: '', cycleDays: 7, cycleStart: 0, count: 0 };
+  }
+
+  function defaultData() {
+    var acc = { id: genId(), name: '账号1', categories: [] };
+    var cat = { id: genId(), name: '默认分类', tasks: [] };
+    for (var i = 0; i < 3; i++) cat.tasks.push(newTask());
+    acc.categories.push(cat);
+    return { activeAccountId: acc.id, accounts: [acc] };
+  }
+
+  function loadData() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && Array.isArray(d.accounts) && d.accounts.length &&
+            Array.isArray(d.accounts[0].categories)) {
+          return d;
+        }
+      }
+    } catch (e) { /* 数据损坏时回退默认数据 */ }
+    return defaultData();
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  function activeAccount() {
+    var acc = null;
+    data.accounts.forEach(function (a) { if (a.id === data.activeAccountId) acc = a; });
+    if (!acc) { acc = data.accounts[0]; data.activeAccountId = acc.id; }
+    return acc;
+  }
+
+  function findTask(taskId) {
+    var res = null;
+    data.accounts.some(function (acc) {
+      return acc.categories.some(function (cat) {
+        return cat.tasks.some(function (t) {
+          if (t.id === taskId) { res = { task: t, cat: cat, account: acc }; return true; }
+          return false;
+        });
+      });
+    });
+    return res;
+  }
+
+  function removeTask(task) {
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        var i = cat.tasks.indexOf(task);
+        if (i > -1) cat.tasks.splice(i, 1);
+      });
+    });
+    save();
+    render();
+  }
+
+  /* ================= 周期统计逻辑 ================= */
+  function cycleMs(task) { return Math.max(1, task.cycleDays || 1) * DAY; }
+
+  function isCycleExpired(task) {
+    return task.configured && task.cycleStart > 0 && (Date.now() - task.cycleStart >= cycleMs(task));
+  }
+
+  function remainDays(task) {
+    if (!task.configured) return 0;
+    if (task.cycleStart === 0) return task.cycleDays;
+    var left = task.cycleStart + cycleMs(task) - Date.now();
+    return Math.max(0, Math.ceil(left / DAY));
+  }
+
+  function isDone(task) { return task.configured && task.count > 0; }
+
+  /* 周期到期后自动清零：次数归零、按钮回到灰色未完成状态 */
+  function checkCycles() {
+    var changed = false;
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        cat.tasks.forEach(function (t) {
+          if (isCycleExpired(t)) {
+            t.cycleStart = 0;
+            t.count = 0;
+            changed = true;
+          }
+        });
+      });
+    });
+    if (changed) { save(); render(); }
+  }
+
+  /* ================= 渲染 ================= */
+  function render() {
+    renderTabs();
+    renderMain();
+  }
+
+  function renderTabs() {
+    var bar = document.getElementById('tabBar');
+    bar.innerHTML = '';
+    var activeTab = null;
+    data.accounts.forEach(function (acc) {
+      var tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'tab' + (acc.id === data.activeAccountId ? ' active' : '');
+      tab.textContent = acc.name;
+      tab.title = acc.name + '（长按可重命名/删除）';
+      tab.addEventListener('click', function () {
+        if (suppressClick) { suppressClick = false; return; }
+        data.activeAccountId = acc.id;
+        save();
+        render();
+      });
+      attachLongPress(tab, function () { openAccountMenu(acc); });
+      if (acc.id === data.activeAccountId) activeTab = tab;
+      bar.appendChild(tab);
+    });
+    var add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'tab add-tab';
+    add.textContent = '＋';
+    add.title = '添加账号';
+    add.addEventListener('click', function () {
+      if (suppressClick) { suppressClick = false; return; }
+      openAddAccountDialog();
+    });
+    bar.appendChild(add);
+    if (activeTab && activeTab.scrollIntoView) {
+      activeTab.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+  }
+
+  function renderMain() {
+    var acc = activeAccount();
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+    acc.categories.forEach(function (cat) {
+      var section = document.createElement('section');
+      section.className = 'category';
+
+      var header = document.createElement('div');
+      header.className = 'cat-header';
+      var nameWrap = document.createElement('div');
+      var name = document.createElement('span');
+      name.className = 'cat-name';
+      name.textContent = cat.name;
+      var sub = document.createElement('span');
+      sub.className = 'cat-sub';
+      var doneCount = cat.tasks.filter(isDone).length;
+      sub.textContent = cat.tasks.length + ' 个任务 · ' + doneCount + ' 个进行中';
+      nameWrap.appendChild(name);
+      nameWrap.appendChild(sub);
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'icon-btn';
+      more.textContent = '⋯';
+      more.title = '分类管理';
+      more.addEventListener('click', function () { openCategoryMenu(cat); });
+      header.appendChild(nameWrap);
+      header.appendChild(more);
+      section.appendChild(header);
+
+      var grid = document.createElement('div');
+      grid.className = 'task-grid';
+      cat.tasks.forEach(function (task) {
+        grid.appendChild(buildTaskButton(task, cat));
+      });
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'task-btn add-task-btn';
+      var addLabel = document.createElement('span');
+      addLabel.className = 't-name';
+      addLabel.textContent = '＋ 添加任务';
+      addBtn.appendChild(addLabel);
+      addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
+      grid.appendChild(addBtn);
+      section.appendChild(grid);
+
+      main.appendChild(section);
+    });
+
+    var addCat = document.createElement('button');
+    addCat.type = 'button';
+    addCat.className = 'add-cat-btn';
+    addCat.textContent = '＋ 添加分类';
+    addCat.addEventListener('click', openAddCategoryDialog);
+    main.appendChild(addCat);
+
+    var hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = '点击按钮记录一次完成；长按按钮可编辑、调整次数或删除任务。';
+    main.appendChild(hint);
+  }
+
+  function buildTaskButton(task, cat) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'task-btn';
+
+    if (!task.configured) {
+      btn.classList.add('unset');
+      var plus = document.createElement('span');
+      plus.className = 't-name';
+      plus.textContent = '＋';
+      var tip = document.createElement('span');
+      tip.className = 't-sub';
+      tip.textContent = '设置任务';
+      btn.appendChild(plus);
+      btn.appendChild(tip);
+    } else {
+      if (isDone(task)) btn.classList.add('done');
+      var name = document.createElement('span');
+      name.className = 't-name';
+      name.textContent = task.name;
+      var sub = document.createElement('span');
+      sub.className = 't-sub';
+      sub.textContent = task.cycleStart > 0 ? ('剩 ' + remainDays(task) + ' 天') : (task.cycleDays + ' 天周期');
+      btn.appendChild(name);
+      btn.appendChild(sub);
+      if (task.count > 0) {
+        var badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = String(task.count);
+        btn.appendChild(badge);
+      }
+    }
+
+    btn.addEventListener('click', function () { onTaskClick(task); });
+    attachLongPress(btn, function () { openTaskMenu(task, cat); });
+    return btn;
+  }
+
+  /* ================= 交互：点击与长按 ================= */
+  function onTaskClick(task) {
+    if (suppressClick) { suppressClick = false; return; }
+    if (!task.configured) {
+      openTaskSetup(task, null, false);
+      return;
+    }
+    var now = Date.now();
+    if (task.cycleStart === 0 || now - task.cycleStart >= cycleMs(task)) {
+      /* 新周期首次完成 */
+      task.cycleStart = now;
+      task.count = 1;
+    } else {
+      /* 同一周期内可多次完成 */
+      task.count += 1;
+    }
+    save();
+    render();
+  }
+
+  var suppressClick = false;
+
+  /* 吞掉长按触发后浏览器补发的那一次 click，避免误触 */
+  function swallowNextClick(el) {
+    var handler = function (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      el.removeEventListener('click', handler, true);
+    };
+    el.addEventListener('click', handler, true);
+  }
+
+  function attachLongPress(el, callback) {
+    var timer = null;
+    var sx = 0, sy = 0;
+
+    function start(x, y) {
+      sx = x; sy = y;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        swallowNextClick(el);
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+        callback();
+      }, LONG_PRESS_MS);
+    }
+    function cancel() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    el.addEventListener('touchstart', function (e) {
+      var t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+    }, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchcancel', cancel);
+    el.addEventListener('mousedown', function (e) { start(e.clientX, e.clientY); });
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+    /* 抑制系统长按菜单（移动端），桌面端右键由 mousedown 长按覆盖 */
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  /* ================= 弹窗基础 ================= */
+  var modalOpenAt = 0;
+
+  function openModal(build, opts) {
+    closeModal();
+    opts = opts || {};
+    modalOpenAt = Date.now();
+    var root = document.getElementById('modalRoot');
+    var mask = document.createElement('div');
+    mask.className = 'mask';
+    var sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    build(sheet, function () {
+      if (mask.parentNode) mask.parentNode.removeChild(mask);
+    });
+    mask.appendChild(sheet);
+    if (opts.dismissOnMask !== false) {
+      mask.addEventListener('click', function (e) {
+        if (e.target !== mask) return;
+        /* 刚弹出的 350ms 内忽略误触 */
+        if (Date.now() - modalOpenAt < 350) return;
+        if (mask.parentNode) mask.parentNode.removeChild(mask);
+      });
+    }
+    root.appendChild(mask);
+  }
+
+  function closeModal() {
+    document.getElementById('modalRoot').innerHTML = '';
+  }
+
+  /* 表单弹窗：name / 天数 / 下拉等 */
+  function openFormDialog(o) {
+    var confirmed = false;
+    openModal(function (sheet, rawClose) {
+      function close() {
+        if (!confirmed && typeof o.onCancel === 'function') o.onCancel();
+        rawClose();
+      }
+      var h = document.createElement('h3');
+      h.textContent = o.title;
+      sheet.appendChild(h);
+
+      var inputs = {};
+      (o.fields || []).forEach(function (f) {
+        var wrap = document.createElement('div');
+        wrap.className = 'field';
+        var label = document.createElement('label');
+        label.textContent = f.label;
+        wrap.appendChild(label);
+        var input;
+        if (f.type === 'select') {
+          input = document.createElement('select');
+          (f.options || []).forEach(function (opt) {
+            var el = document.createElement('option');
+            el.value = opt.value;
+            el.textContent = opt.label;
+            if (String(opt.value) === String(f.value)) el.selected = true;
+            input.appendChild(el);
+          });
+        } else {
+          input = document.createElement('input');
+          input.type = f.type || 'text';
+          input.value = f.value == null ? '' : f.value;
+          if (f.placeholder) input.placeholder = f.placeholder;
+          if (f.min != null) input.min = f.min;
+          if (f.max != null) input.max = f.max;
+          if (f.type === 'number') input.inputMode = 'numeric';
+        }
+        inputs[f.key] = input;
+        wrap.appendChild(input);
+        sheet.appendChild(wrap);
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn ' + (o.danger ? 'btn-danger' : 'btn-primary');
+      okBtn.textContent = o.confirmText || '确定';
+      okBtn.addEventListener('click', function () {
+        var values = {};
+        for (var k in inputs) values[k] = inputs[k].value;
+        if (o.onConfirm(values, close) === false) return;
+        confirmed = true;
+        close();
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+
+      var first = sheet.querySelector('input, select');
+      if (first) setTimeout(function () { try { first.focus(); } catch (e) {} }, 60);
+    }, { dismissOnMask: o.dismissOnMask });
+  }
+
+  /* 菜单弹窗 */
+  function openMenuDialog(title, items) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = title;
+      sheet.appendChild(h);
+      var list = document.createElement('div');
+      list.className = 'menu-list';
+      items.forEach(function (it) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'menu-item' + (it.danger ? ' danger' : '');
+        b.textContent = it.label;
+        b.addEventListener('click', function () {
+          /* 先关闭菜单，再执行动作（动作可能打开新的弹窗） */
+          close();
+          it.onClick();
+        });
+        list.appendChild(b);
+      });
+      sheet.appendChild(list);
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.style.width = '100%';
+      cancelBtn.style.marginTop = '10px';
+      cancelBtn.addEventListener('click', close);
+      sheet.appendChild(cancelBtn);
+    });
+  }
+
+  /* 确认弹窗 */
+  function openConfirmDialog(title, message, onOk) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = title;
+      sheet.appendChild(h);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.marginBottom = '14px';
+      p.textContent = message || '';
+      sheet.appendChild(p);
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-danger';
+      okBtn.textContent = '删除';
+      okBtn.addEventListener('click', function () { onOk(); close(); });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+    });
+  }
+
+  /* ================= 任务：设置 / 编辑 / 管理 ================= */
+  function openTaskSetup(task, cat, isNewAddition) {
+    var isEdit = !!task && task.configured;
+    var targetCat = cat;
+    if (!targetCat && task) {
+      var found = findTask(task.id);
+      targetCat = found && found.cat;
+    }
+    if (!isEdit && !task) {
+      /* 由「添加任务」入口创建的新按钮，先放入分类，取消时移除 */
+      var acc = activeAccount();
+      targetCat = cat;
+      task = newTask();
+      targetCat.tasks.push(task);
+      isNewAddition = true;
+    }
+
+    openFormDialog({
+      title: isEdit ? '编辑任务' : '设置任务',
+      dismissOnMask: isNewAddition ? false : true,
+      fields: [
+        { key: 'name', label: '任务名称', type: 'text', value: isEdit ? task.name : '', placeholder: '请输入任务名称' },
+        { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 7, min: 1, max: 3650, placeholder: '7' }
+      ],
+      confirmText: isEdit ? '保存' : '确定',
+      onConfirm: function (v, close) {
+        var name = (v.name || '').trim();
+        if (!name) { toast('请输入任务名称'); return false; }
+        var cycle = parseInt(v.cycle, 10);
+        if (!cycle || cycle < 1) cycle = 7;
+        if (cycle > 3650) cycle = 3650;
+        task.configured = true;
+        task.name = name;
+        task.cycleDays = cycle;
+        save();
+        render();
+        toast(isEdit ? '已保存' : '设置完成，点击按钮记录完成');
+      },
+      onCancel: function () {
+        /* 取消「添加任务」时移除刚创建的占位按钮 */
+        if (!task.configured && targetCat) {
+          var i = targetCat.tasks.indexOf(task);
+          if (i > -1) targetCat.tasks.splice(i, 1);
+          save();
+          render();
+        }
+      }
+    });
+  }
+
+  /* 长按管理：编辑 / 调整次数 / 重置统计 / 删除 */
+  function openTaskMenu(task, cat) {
+    if (!task.configured) {
+      openMenuDialog('任务按钮', [
+        {
+          label: '设置任务',
+          onClick: function () { openTaskSetup(task, cat, false); }
+        },
+        {
+          label: '删除任务按钮',
+          danger: true,
+          onClick: function () {
+            openConfirmDialog('删除任务按钮', '确定删除这个尚未设置的任务按钮吗？', function () {
+              removeTask(task);
+              toast('已删除');
+            });
+          }
+        }
+      ]);
+      return;
+    }
+    openMenuDialog('管理 · ' + task.name, [
+      {
+        label: '编辑任务',
+        onClick: function () { openTaskSetup(task, cat, false); }
+      },
+      {
+        label: '调整次数（当前 ' + task.count + ' 次）',
+        onClick: function () { openCountDialog(task); }
+      },
+      {
+        label: '重置统计（次数清零）',
+        onClick: function () {
+          task.count = 0;
+          task.cycleStart = 0;
+          save();
+          render();
+          toast('已重置，按钮回到未完成状态');
+        }
+      },
+      {
+        label: '删除任务',
+        danger: true,
+        onClick: function () {
+          openConfirmDialog('删除任务', '确定删除任务「' + task.name + '」吗？', function () {
+            removeTask(task);
+            toast('已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  /* 手动调整次数 */
+  function openCountDialog(task) {
+    var value = task.count;
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '调整次数 · ' + task.name;
+      sheet.appendChild(h);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = '当前统计周期内的完成次数';
+      sheet.appendChild(p);
+
+      var row = document.createElement('div');
+      row.className = 'counter-row';
+      var minus = document.createElement('button');
+      minus.type = 'button';
+      minus.className = 'counter-btn';
+      minus.textContent = '−';
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'counter-val';
+      input.value = String(value);
+      input.min = '0';
+      input.max = String(MAX_COUNT);
+      input.inputMode = 'numeric';
+      var plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'counter-btn';
+      plus.textContent = '＋';
+
+      function setValue(n) {
+        value = Math.max(0, Math.min(MAX_COUNT, n));
+        input.value = String(value);
+      }
+      minus.addEventListener('click', function () { setValue(value - 1); });
+      plus.addEventListener('click', function () { setValue(value + 1); });
+      input.addEventListener('input', function () {
+        var n = parseInt(input.value, 10);
+        if (!isNaN(n)) value = Math.max(0, Math.min(MAX_COUNT, n));
+      });
+      row.appendChild(minus);
+      row.appendChild(input);
+      row.appendChild(plus);
+      sheet.appendChild(row);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-primary';
+      okBtn.textContent = '确定';
+      okBtn.addEventListener('click', function () {
+        var n = parseInt(input.value, 10);
+        var finalVal = isNaN(n) ? 0 : Math.max(0, Math.min(MAX_COUNT, n));
+        task.count = finalVal;
+        if (finalVal > 0 && (task.cycleStart === 0 || Date.now() - task.cycleStart >= cycleMs(task))) {
+          task.cycleStart = Date.now();
+        }
+        if (finalVal === 0) task.cycleStart = 0;
+        save();
+        render();
+        close();
+        toast('次数已调整为 ' + finalVal);
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+
+      setTimeout(function () { try { input.focus(); input.select(); } catch (e) {} }, 60);
+    });
+  }
+
+  /* ================= 账号 Tab ================= */
+  function openAddAccountDialog() {
+    var defName = '账号' + (data.accounts.length + 1);
+    var options = [{ value: '', label: '不复制（空白账号）' }];
+    data.accounts.forEach(function (a) {
+      options.push({ value: a.id, label: '复制自：' + a.name });
+    });
+    openFormDialog({
+      title: '添加账号',
+      fields: [
+        { key: 'name', label: '账号名称', type: 'text', value: defName, placeholder: defName },
+        { key: 'copyFrom', label: '复制已有账号的任务', type: 'select', value: '', options: options }
+      ],
+      confirmText: '创建',
+      onConfirm: function (v, close) {
+        var name = (v.name || '').trim() || defName;
+        var acc = { id: genId(), name: name, categories: [] };
+        var src = null;
+        if (v.copyFrom) {
+          data.accounts.forEach(function (a) { if (a.id === v.copyFrom) src = a; });
+        }
+        if (src) {
+          /* 深拷贝任务结构，次数与周期进度归零，从新账号第一天开始统计 */
+          src.categories.forEach(function (cat) {
+            var nc = { id: genId(), name: cat.name, tasks: [] };
+            cat.tasks.forEach(function (t) {
+              var nt = newTask();
+              nt.configured = t.configured;
+              nt.name = t.name;
+              nt.cycleDays = t.cycleDays;
+              nc.tasks.push(nt);
+            });
+            acc.categories.push(nc);
+          });
+        }
+        if (!acc.categories.length) {
+          acc.categories.push({ id: genId(), name: '默认分类', tasks: [] });
+        }
+        data.accounts.push(acc);
+        data.activeAccountId = acc.id;
+        save();
+        render();
+        toast('已创建「' + name + '」');
+      }
+    });
+  }
+
+  function openAccountMenu(acc) {
+    openMenuDialog('管理账号 · ' + acc.name, [
+      {
+        label: '重命名',
+        onClick: function () {
+          openFormDialog({
+            title: '重命名账号',
+            fields: [{ key: 'name', label: '账号名称', type: 'text', value: acc.name }],
+            confirmText: '保存',
+            onConfirm: function (v) {
+              var name = (v.name || '').trim();
+              if (!name) { toast('请输入账号名称'); return false; }
+              acc.name = name;
+              save();
+              render();
+              toast('已重命名');
+            }
+          });
+        }
+      },
+      {
+        label: '删除账号',
+        danger: true,
+        onClick: function () {
+          if (data.accounts.length <= 1) { toast('至少需要保留一个账号'); return; }
+          openConfirmDialog('删除账号', '确定删除「' + acc.name + '」及其所有任务吗？', function () {
+            var i = data.accounts.indexOf(acc);
+            if (i > -1) data.accounts.splice(i, 1);
+            if (data.activeAccountId === acc.id) data.activeAccountId = data.accounts[0].id;
+            save();
+            render();
+            toast('账号已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  /* ================= 分类 ================= */
+  function openCategoryMenu(cat) {
+    openMenuDialog('管理分类 · ' + cat.name, [
+      {
+        label: '重命名分类',
+        onClick: function () {
+          openFormDialog({
+            title: '重命名分类',
+            fields: [{ key: 'name', label: '分类名称', type: 'text', value: cat.name }],
+            confirmText: '保存',
+            onConfirm: function (v) {
+              var name = (v.name || '').trim();
+              if (!name) { toast('请输入分类名称'); return false; }
+              cat.name = name;
+              save();
+              render();
+            }
+          });
+        }
+      },
+      {
+        label: '删除分类',
+        danger: true,
+        onClick: function () {
+          openConfirmDialog('删除分类', '确定删除「' + cat.name + '」及其下所有任务吗？', function () {
+            var acc = activeAccount();
+            var i = acc.categories.indexOf(cat);
+            if (i > -1) acc.categories.splice(i, 1);
+            if (!acc.categories.length) {
+              acc.categories.push({ id: genId(), name: '默认分类', tasks: [] });
+            }
+            save();
+            render();
+            toast('分类已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  function openAddCategoryDialog() {
+    openFormDialog({
+      title: '添加分类',
+      fields: [{ key: 'name', label: '分类名称', type: 'text', value: '', placeholder: '例如：工作 / 学习 / 每日打卡' }],
+      confirmText: '添加',
+      onConfirm: function (v) {
+        var name = (v.name || '').trim();
+        if (!name) { toast('请输入分类名称'); return false; }
+        activeAccount().categories.push({ id: genId(), name: name, tasks: [] });
+        save();
+        render();
+      }
+    });
+  }
+
+  /* ================= Toast ================= */
+  var toastTimer = null;
+  function toast(msg) {
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 1800);
+  }
+
+  /* ================= 启动 ================= */
+  checkCycles();
+  render();
+  setInterval(checkCycles, 30000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) checkCycles();
+  });
+})();
+</script>
+</body>
+</html>
