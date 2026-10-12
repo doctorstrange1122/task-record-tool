@@ -672,7 +672,7 @@
 <header>
   <div class="head-row">
     <button type="button" id="installBtn" class="head-pill" title="添加到桌面">
-      <span class="pill-full">＋ 添加到桌面</span><span class="pill-short">＋ 桌面</span>
+      <span class="pill-full">+ 添加到桌面</span><span class="pill-short">+ 桌面</span>
     </button>
     <h1>任务记录工具</h1>
     <button type="button" id="authBtn" class="head-pill" title="登录 / 注册">登录</button>
@@ -1229,7 +1229,7 @@
     var add = document.createElement('button');
     add.type = 'button';
     add.className = 'tab add-tab';
-    add.textContent = '＋';
+    add.textContent = '+';
     add.title = '添加账号';
     add.addEventListener('click', function () {
       if (suppressClick) { suppressClick = false; return; }
@@ -1323,7 +1323,7 @@
     var addCat = document.createElement('button');
     addCat.type = 'button';
     addCat.className = 'add-cat-btn';
-    addCat.textContent = '＋ 添加分类';
+    addCat.textContent = '+ 添加分类';
     addCat.addEventListener('click', openAddCategoryDialog);
     main.appendChild(addCat);
 
@@ -1345,7 +1345,7 @@
       btn.classList.add('unset');
       var plus = document.createElement('span');
       plus.className = 't-name';
-      plus.textContent = '＋';
+      plus.textContent = '+';
       var tip = document.createElement('span');
       tip.className = 't-sub';
       tip.textContent = '设置任务';
@@ -1397,7 +1397,7 @@
       addBtn.className = 'task-btn add-task-btn';
       var addLabel = document.createElement('span');
       addLabel.className = 't-name';
-      addLabel.textContent = '＋ 添加任务';
+      addLabel.textContent = '+ 添加任务';
       addBtn.appendChild(addLabel);
       addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
       grid.appendChild(addBtn);
@@ -2388,7 +2388,7 @@
       /* 添加新提醒 */
       var addTitle = document.createElement('div');
       addTitle.style.cssText = 'font-size:13px;color:var(--muted);margin:10px 0 6px;';
-      addTitle.textContent = '＋ 添加提醒';
+      addTitle.textContent = '+ 添加提醒';
       sheet.appendChild(addTitle);
 
       var chosenTime = '09:00';
@@ -2515,7 +2515,7 @@
       var addBtn = document.createElement('button');
       addBtn.type = 'button';
       addBtn.className = 'btn btn-primary';
-      addBtn.textContent = '＋ 添加这条提醒';
+      addBtn.textContent = '+ 添加这条提醒';
       addBtn.style.cssText = 'width:100%;margin-top:4px;';
       addBtn.addEventListener('click', function () {
         if (!parseTime(chosenTime)) { toast('请选择或输入提醒时间'); return; }
@@ -2597,7 +2597,7 @@
       var plus = document.createElement('button');
       plus.type = 'button';
       plus.className = 'counter-btn';
-      plus.textContent = '＋';
+      plus.textContent = '+';
 
       function setValue(n) {
         value = Math.max(0, Math.min(MAX_COUNT, n));
@@ -3035,7 +3035,7 @@
       var addBtn = document.createElement('button');
       addBtn.type = 'button';
       addBtn.className = 'subcat-add';
-      addBtn.textContent = '＋ 添加子分类';
+      addBtn.textContent = '+ 添加子分类';
       addBtn.addEventListener('click', function () {
         var realCount = cat.subcats.filter(function (s) { return s.id !== UNG_ID; }).length;
         var sc = { id: genId(), name: '' };
