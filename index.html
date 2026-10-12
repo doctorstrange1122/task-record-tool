@@ -771,6 +771,22 @@
     if (token && apiConfigured()) {
       apiFetch('/api/logout', { method: 'POST', body: '{}' }, token).catch(function () {});
     }
+    /* 退订后台提醒：退出后不再接收该账号的推送 */
+    if (pushEnabled()) {
+      currentSubscription().then(function (sub) {
+        if (!sub) return null;
+        var ep = sub.endpoint;
+        return sub.unsubscribe().then(function () { return ep; });
+      }).then(function (ep) {
+        try { localStorage.removeItem(PUSH_FLAG); } catch (e) {}
+        if (ep && token && apiConfigured()) {
+          return apiFetch('/api/push/unsubscribe', {
+            method: 'POST', body: JSON.stringify({ endpoint: ep })
+          }, token).catch(function () {});
+        }
+        return null;
+      }).catch(function () {});
+    }
   }
 
   /* ================= 渲染 ================= */
@@ -1843,6 +1859,8 @@
         render();
         close();
         toast(list.length ? '已保存 ' + list.length + ' 条提醒' : '已清除全部提醒');
+        /* 首次设置提醒时引导开启后台提醒（未登录或已开启则跳过） */
+        if (list.length) maybeOfferPush();
       });
       actions.appendChild(cancelBtn);
       actions.appendChild(icsBtn);
@@ -2207,6 +2225,289 @@
     toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
   }
 
+  /* ============ 后台提醒（Web Push：页面关闭/后台/锁屏也能弹系统通知） ============ */
+  var PUSH_FLAG = 'taskRecordTool.push.v1';
+
+  function pushEnabled() {
+    try { return localStorage.getItem(PUSH_FLAG) === '1'; } catch (e) { return false; }
+  }
+
+  /** 推送能力：ok = 可用；need-install = 需先添加到主屏幕；denied = 权限被拒 */
+  function pushStatus() {
+    var hasWorker = 'serviceWorker' in navigator;
+    var hasPush = 'PushManager' in window;
+    var hasNotif = 'Notification' in window;
+    if (!hasWorker) return 'unsupported';
+    /* iOS/WebKit：普通标签页不暴露 Push 与 Notification，必须先添加到主屏幕 */
+    if ((!hasPush || !hasNotif) && !isStandalone()) return 'need-install';
+    if (!hasPush || !hasNotif) return 'unsupported';
+    if (Notification.permission === 'denied') return 'denied';
+    return 'ok';
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var rawData = window.atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  function requestPermission() {
+    return new Promise(function (resolve) {
+      var p = Notification.requestPermission(function (perm) { resolve(perm); });
+      if (p && p.then) p.then(resolve);
+    });
+  }
+
+  /** 注册 Service Worker；失败返回 null（不影响页面其它功能） */
+  function registerWorker() {
+    if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+    return navigator.serviceWorker.register('./sw.js').catch(function () { return null; });
+  }
+
+  /** 当前是否已有有效订阅 */
+  function currentSubscription() {
+    if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription();
+    }).catch(function () { return null; });
+  }
+
+  /**
+   * 开启后台提醒：申请通知权限 -> 订阅推送 -> 上报服务端
+   * @param {boolean} silent 静默模式（自动重试时不打扰用户）
+   * @returns {Promise<boolean>}
+   */
+  function enablePush(silent) {
+    if (!auth || !apiConfigured()) {
+      if (!silent) toast('请先登录后再开启后台提醒');
+      return Promise.resolve(false);
+    }
+    var st = pushStatus();
+    if (st === 'unsupported') {
+      if (!silent) toast('当前浏览器不支持后台通知');
+      return Promise.resolve(false);
+    }
+    if (st === 'need-install') {
+      if (!silent) toast('iPhone 请先「添加到主屏幕」，再从桌面图标打开后开启');
+      return Promise.resolve(false);
+    }
+    if (st === 'denied') {
+      if (!silent) toast('通知权限已被拒绝，请在系统设置中允许本浏览器通知');
+      return Promise.resolve(false);
+    }
+
+    return requestPermission().then(function (perm) {
+      if (perm !== 'granted') {
+        if (!silent) toast('需要通知权限才能开启后台提醒');
+        return false;
+      }
+      return navigator.serviceWorker.ready.then(function (reg) {
+        return apiFetch('/api/push/publicKey').then(function (res) { return res.json(); });
+      }).then(function (pk) {
+        if (!pk || !pk.ok || !pk.publicKey) throw new Error('推送服务未配置');
+        return navigator.serviceWorker.ready.then(function (reg) {
+          return reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(pk.publicKey)
+          });
+        });
+      }).then(function (sub) {
+        var json = sub.toJSON();
+        return apiFetch('/api/push/subscribe', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys })
+        }).then(function (res) { return res.json(); });
+      }).then(function (r) {
+        if (!r || !r.ok) throw new Error((r && r.error) || '订阅失败');
+        try { localStorage.setItem(PUSH_FLAG, '1'); } catch (e) {}
+        if (!silent) toast('后台提醒已开启，页面关闭也能收到通知');
+        return true;
+      }).catch(function (e) {
+        if (!silent) toast(e.message || '开启失败，请重试');
+        return false;
+      });
+    });
+  }
+
+  /** 关闭后台提醒：本地退订并通知服务端删除该设备 */
+  function disablePush() {
+    return currentSubscription().then(function (sub) {
+      if (!sub) return true;
+      var endpoint = sub.endpoint;
+      return sub.unsubscribe().then(function () {
+        if (auth && apiConfigured()) {
+          return apiFetch('/api/push/unsubscribe', {
+            method: 'POST',
+            body: JSON.stringify({ endpoint: endpoint })
+          }).catch(function () { return null; });
+        }
+        return null;
+      }).then(function () { return true; });
+    }).then(function () {
+      try { localStorage.removeItem(PUSH_FLAG); } catch (e) {}
+      toast('后台提醒已关闭');
+      return true;
+    });
+  }
+
+  /** 已登录且曾开启过 -> 静默续订（权限仍在时刷新订阅） */
+  function refreshPushIfEnabled() {
+    if (!auth || !apiConfigured() || !pushEnabled()) return Promise.resolve(false);
+    if (pushStatus() !== 'ok') return Promise.resolve(false);
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return apiFetch('/api/push/publicKey').then(function (res) { return res.json(); });
+    }).then(function (pk) {
+      if (!pk || !pk.ok || !pk.publicKey) return false;
+      return navigator.serviceWorker.ready.then(function (reg) {
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(pk.publicKey)
+        });
+      });
+    }).then(function (sub) {
+      var json = sub.toJSON();
+      return apiFetch('/api/push/subscribe', {
+        method: 'POST',
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys })
+      }).then(function (res) { return res.json(); });
+    }).then(function (r) { return !!(r && r.ok); }).catch(function () { return false; });
+  }
+
+  /* ---------- 后台运行 / 通知权限设置指引 ---------- */
+  function openPushGuide() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '后台提醒设置';
+      sheet.appendChild(h);
+
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.textAlign = 'left';
+
+      var b = detectBrowser();
+      var html = '';
+      if (b.isIOS) {
+        if (isStandalone()) {
+          html = 'iPhone / iPad（已从桌面运行）：<br>' +
+                 '1. 系统「设置」→「通知」→ 找到本工具<br>' +
+                 '2. 开启「<strong>允许通知</strong>」，并勾选锁定屏幕与横幅<br><br>' +
+                 '若通知仍延迟：关闭「低电量模式」与「专注模式」后再试。';
+        } else {
+          html = 'iPhone / iPad（Safari）：<br>' +
+                 '1. 点击底部<strong>分享按钮</strong>（□↑）<br>' +
+                 '2. 选择「<strong>添加到主屏幕</strong>」<br>' +
+                 '3. 点击「添加」，桌面出现「<strong>任务管理</strong>」<br>' +
+                 '4. 从桌面图标打开后，再点「<strong>开启后台提醒</strong>」并允许通知<br><br>' +
+                 '<strong>说明</strong>：苹果规定普通 Safari 标签页不能收推送，' +
+                 '必须先添加到主屏幕。这是 iOS 的系统限制，与设置无关。';
+        }
+      } else if (b.isHarmony) {
+        html = '鸿蒙手机（华为 / 鸿蒙浏览器）：<br>' +
+               '1. 设置 → 应用 → 应用管理 → 找到你的浏览器<br>' +
+               '2. 电池 → 选「<strong>允许后台运行</strong>」或「不受限制」<br>' +
+               '3. 流量管理 → 开启<strong>后台数据</strong><br>' +
+               '4. 通知管理 → 允许通知，并开启<strong>锁屏通知</strong><br>' +
+               '5. 多任务界面找到本工具，<strong>下拉加锁</strong>避免被清理';
+      } else if (b.isAndroid || b.isMi || b.isOppo || b.isVivo || b.isSamsung) {
+        html = '安卓手机：<br>' +
+               '1. 设置 → 应用 → 你的浏览器 → 电池 → 选「<strong>不受限制 / 允许后台运行</strong>」<br>' +
+               '2. 开启<strong>后台数据</strong>与「<strong>后台弹出界面</strong>」<br>' +
+               '3. 通知管理 → 允许通知，开启<strong>锁屏通知与横幅</strong><br>' +
+               '4. 多任务界面把本工具<strong>加锁</strong>，避免被一键清理';
+      } else {
+        html = '电脑浏览器：<br>' +
+               '1. 点击地址栏右侧的<strong>安装图标</strong>（⊕）安装<br>' +
+               '2. 系统设置 → 通知 → 允许该浏览器通知<br>' +
+               '3. 保持浏览器在后台运行即可收到提醒';
+      }
+      p.innerHTML = html;
+      sheet.appendChild(p);
+
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '知道了';
+      ok.style.width = '100%';
+      ok.style.marginTop = '14px';
+      ok.addEventListener('click', close);
+      sheet.appendChild(ok);
+    });
+  }
+
+  /** 发送一条测试通知，验证「服务端 -> 推送通道 -> 本机」链路 */
+  function testPush() {
+    if (!auth || !apiConfigured()) { toast('请先登录'); return; }
+    if (!('serviceWorker' in navigator)) { toast('当前浏览器不支持后台通知'); return; }
+    if (pushStatus() === 'need-install') {
+      toast('iPhone 请先「添加到主屏幕」，再从桌面图标打开');
+      return;
+    }
+    toast('正在发送测试通知…');
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (sub) {
+        if (!sub) { toast('尚未订阅，请重新开启后台提醒'); return null; }
+        return apiFetch('/api/push/test', { method: 'POST', body: '{}' })
+          .then(function (res) { return res.json(); })
+          .then(function (r) {
+            if (r && r.ok) toast('已发送，请查看手机通知栏');
+            else toast((r && r.error) || '发送失败，请检查后台运行设置');
+            return r;
+          });
+      });
+    }).catch(function () { toast('发送失败，请重试'); });
+  }
+
+  /* 首次为任务设置提醒时，引导开启后台提醒 */
+  function maybeOfferPush() {
+    if (!auth || !apiConfigured() || pushEnabled()) return;
+    if (pushStatus() !== 'ok') return;
+    var st = pushStatus();
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '开启后台提醒？';
+      sheet.appendChild(h);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.textAlign = 'left';
+      p.innerHTML = '你已设置了任务提醒。开启后，即使<strong>关闭页面、锁屏或在后台</strong>，' +
+                    '到点也会收到系统通知（由服务端准点推送）。<br><br>' +
+                    '不开启则仅在<strong>打开本页面时</strong>才会弹出提醒。';
+      sheet.appendChild(p);
+
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;margin-top:14px;';
+      var later = document.createElement('button');
+      later.type = 'button';
+      later.className = 'btn btn-ghost';
+      later.style.flex = '1';
+      later.textContent = '暂不开启';
+      later.addEventListener('click', close);
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'btn btn-primary';
+      go.style.flex = '1';
+      go.textContent = '开启后台提醒';
+      go.addEventListener('click', function () {
+        close();
+        enablePush(false);
+      });
+      row.appendChild(later);
+      row.appendChild(go);
+      sheet.appendChild(row);
+    });
+  }
+
+  /* 启动时注册 Service Worker */
+  function initPush() {
+    if (!('serviceWorker' in navigator)) return;
+    registerWorker().then(function () {
+      if (auth && apiConfigured() && pushEnabled()) refreshPushIfEnabled();
+    });
+  }
+
   /* ================= 添加到桌面（PWA，全品牌浏览器兼容） ================= */
   var deferredPrompt = null;
   window.addEventListener('beforeinstallprompt', function (e) {
@@ -2326,6 +2627,20 @@
             }
           },
           {
+            label: pushEnabled() ? '后台提醒：已开启' : '后台提醒：未开启',
+            onClick: function () {
+              if (pushEnabled()) {
+                openMenuDialog('后台提醒', [
+                  { label: '发送一条测试通知', onClick: function () { testPush(); } },
+                  { label: '查看后台运行设置指引', onClick: function () { openPushGuide(); } },
+                  { label: '关闭后台提醒', danger: true, onClick: function () { disablePush(); } }
+                ]);
+              } else {
+                enablePush(false);
+              }
+            }
+          },
+          {
             label: '退出登录',
             danger: true,
             onClick: function () { logout(); }
@@ -2344,6 +2659,7 @@
   updateAuthUI();
   updateInstallBtn();
   checkReminders();
+  initPush();
   if (auth && apiConfigured()) {
     /* 保持登录状态：自动拉取云端最新数据 */
     pullData(false);
