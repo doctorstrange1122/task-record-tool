@@ -183,15 +183,15 @@
     position: relative;
     border: none;
     border-radius: 12px;
-    min-height: 62px;
-    padding: 8px 6px;
+    min-height: 52px;
+    padding: 6px 5px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     color: #fff;
     background: var(--gray);
     transition: transform .1s, background .2s;
@@ -215,7 +215,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .task-btn .t-sub { font-size: 11px; opacity: .85; font-weight: 400; }
+  .task-btn .t-sub { font-size: 10.5px; opacity: .85; font-weight: 400; }
   .task-btn .badge {
     position: absolute;
     top: 5px;
@@ -242,6 +242,86 @@
     opacity: .95;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .25));
   }
+  /* ---------- 应用内提醒弹窗 ---------- */
+  .remind-bell {
+    width: 76px;
+    height: 76px;
+    margin: 4px auto 10px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffb020, #ff8a00);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(255, 138, 0, .35);
+    animation: remindPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes remindPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 6px 18px rgba(255, 138, 0, .35); }
+    50% { transform: scale(1.08); box-shadow: 0 10px 26px rgba(255, 138, 0, .5); }
+  }
+  .remind-pop-title { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+  .remind-pop-task {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 6px 0 2px;
+    word-break: break-all;
+  }
+  .remind-pop-meta { text-align: center; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .remind-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    font-size: 13px;
+  }
+  .remind-item .r-label { flex: 1; line-height: 1.35; }
+  .remind-item .r-del {
+    border: none;
+    background: #fee2e2;
+    color: var(--danger);
+    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .seg {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 10px;
+  }
+  .seg button {
+    flex: 1;
+    padding: 8px 2px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: #f8f9fa;
+    color: var(--text);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .week-row { display: flex; gap: 5px; margin: 2px 0 10px; }
+  .week-row button {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: #f8f9fa;
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .week-row button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .add-task-btn {
     background: #fff !important;
     color: #495057 !important;
@@ -427,7 +507,7 @@
 
   function newTask() {
     /* 默认统计周期为一天，0 点自动清零 */
-    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0 };
+    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0, reminders: [] };
   }
 
   function defaultData() {
@@ -445,11 +525,27 @@
         var d = JSON.parse(raw);
         if (d && Array.isArray(d.accounts) && d.accounts.length &&
             Array.isArray(d.accounts[0].categories)) {
+          migrateReminders(d);
           return d;
         }
       }
     } catch (e) { /* 数据损坏时回退默认数据 */ }
     return defaultData();
+  }
+
+  /* 旧版单值 remind 字段迁移为 reminders 数组（兼容历史数据） */
+  function migrateReminders(d) {
+    (d.accounts || []).forEach(function (acc) {
+      (acc.categories || []).forEach(function (cat) {
+        (cat.tasks || []).forEach(function (t) {
+          if (t.remind && !t.reminders) {
+            t.reminders = [{ id: 'r' + (t.id || '') + '-' + Date.now().toString(36), time: t.remind, repeat: 'daily', enabled: true }];
+          }
+          if (t.remind) delete t.remind;
+          if (!Array.isArray(t.reminders)) t.reminders = [];
+        });
+      });
+    });
   }
 
   function save() {
@@ -500,13 +596,8 @@
 
   function remainLabel(task) {
     if (!task.configured) return '';
-    if (task.cycleStart === 0) return (task.cycleDays || 1) + ' 天周期 · 0 点清零';
-    var at = resetAt(task);
-    if (Date.now() >= at) return '已到期';
-    var d = new Date(at);
-    var diffDays = Math.round((startOfDay(at) - startOfDay(Date.now())) / DAY);
-    var when = diffDays <= 0 ? '今天' : diffDays === 1 ? '明天' : (d.getMonth() + 1) + '月' + d.getDate() + '日';
-    return when + ' 0 点清零';
+    var n = Math.max(1, task.cycleDays || 1);
+    return n === 1 ? '每日刷新' : '每 ' + n + ' 日刷新';
   }
 
   function isDone(task) { return task.configured && task.count > 0; }
@@ -818,11 +909,12 @@
         badge.textContent = String(task.count);
         btn.appendChild(badge);
       }
-      if (task.remind) {
+      var activeReminders = (task.reminders || []).filter(function (r) { return r.enabled !== false; });
+      if (activeReminders.length) {
         var bell = document.createElement('span');
         bell.className = 't-bell';
-        bell.textContent = '⏰';
-        bell.title = '每天 ' + task.remind + ' 提醒';
+        bell.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+        bell.title = taskRemindSummary(task);
         btn.appendChild(bell);
       }
     }
@@ -1141,7 +1233,9 @@
         onClick: function () { openCountDialog(task); }
       },
       {
-        label: task.remind ? '设置提醒（当前每天 ' + task.remind + '）' : '设置提醒',
+        label: (task.reminders && task.reminders.length)
+          ? '设置提醒（已设 ' + task.reminders.filter(function (r) { return r.enabled !== false; }).length + ' 条）'
+          : '设置提醒',
         onClick: function () { openRemindDialog(task); }
       },
       {
@@ -1168,55 +1262,177 @@
   }
 
   /* 手动调整次数 */
-  /* ================= 提醒功能（调用系统日历） ================= */
+  /* ================= 提醒功能（应用内弹窗 + 系统日历导出） ================= */
   var REMIND_PRESETS = [
     { label: '早 9 点', value: '09:00' },
     { label: '中午 12 点', value: '12:00' },
     { label: '晚上 21 点', value: '21:00' }
   ];
+  var REPEAT_OPTIONS = [
+    { value: 'daily', label: '每天' },
+    { value: 'weekly', label: '每周' },
+    { value: 'cycle', label: '跟随周期' },
+    { value: 'date', label: '指定日期' }
+  ];
+  var WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+  var FIRED_KEY = 'taskRecordTool.remindFired.v1';
+  var SNOOZE_KEY = 'taskRecordTool.remindSnooze.v1';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-  /* 生成日历日程文件（.ics）：每日重复 + 准点闹钟提醒 */
-  function buildReminderIcs(task, timeStr) {
-    var parts = String(timeStr).split(':');
-    var hh = parseInt(parts[0], 10), mm = parseInt(parts[1], 10);
-    if (isNaN(hh) || isNaN(mm)) return null;
-    var start = new Date();
-    start.setHours(hh, mm, 0, 0);
-    if (start.getTime() <= Date.now()) start.setDate(start.getDate() + 1);
-    var end = new Date(start.getTime() + 15 * 60000);
-    function fmt(d) {
-      return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
-        'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
+  function parseTime(str) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(str || ''));
+    if (!m) return null;
+    var hh = +m[1], mm = +m[2];
+    if (hh > 23 || mm > 59) return null;
+    return { hh: hh, mm: mm };
+  }
+
+  /* 单条提醒的中文描述，如「每天 09:00」「每周一、三 09:00」「每3日 09:00」「10月20日 09:00」 */
+  function reminderLabel(r, task) {
+    var base = '';
+    if (r.repeat === 'weekly') {
+      var ds = (r.days || []).slice().sort();
+      if (ds.length === 1) base = '每周' + WEEK_LABELS[ds[0]];
+      else if (ds.length > 1) base = '每周' + WEEK_LABELS[ds[0]] + '、' + ds.slice(1).map(function (d) { return WEEK_LABELS[d]; }).join('、');
+      else base = '每周';
+    } else if (r.repeat === 'cycle') {
+      base = '每 ' + Math.max(1, task.cycleDays || 1) + ' 日';
+    } else if (r.repeat === 'date') {
+      var p = String(r.date || '').split('-');
+      base = p.length === 3 ? (+p[1]) + '月' + (+p[2]) + '日' : '指定日期';
+    } else {
+      base = '每天';
     }
-    var uid = 'task-' + task.id + '-' + start.getTime() + '@task-record';
+    return base + ' ' + r.time;
+  }
+
+  function taskRemindSummary(task) {
+    var list = (task.reminders || []).filter(function (r) { return r.enabled !== false; });
+    if (!list.length) return '';
+    return '已设 ' + list.length + ' 条提醒：' + list.map(function (r) { return reminderLabel(r, task); }).join('；');
+  }
+
+  /* 某一天（传入当天 0 点）的触发时刻；weekly 不在选定星期返回 null */
+  function occurrenceAt(r, dayStartTs) {
+    var p = parseTime(r.time);
+    if (!p) return null;
+    var d = new Date(dayStartTs);
+    d.setHours(p.hh, p.mm, 0, 0);
+    if (r.repeat === 'weekly' && (r.days || []).indexOf(d.getDay()) === -1) return null;
+    return d.getTime();
+  }
+
+  /* fromTs 之后的下一次触发时刻 */
+  function nextOccurrence(r, task, fromTs) {
+    if (r.repeat === 'date') {
+      var parts = String(r.date || '').split('-');
+      if (parts.length !== 3) return null;
+      var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+      var p = parseTime(r.time);
+      if (!p) return null;
+      d.setHours(p.hh, p.mm, 0, 0);
+      return d.getTime() >= fromTs ? d.getTime() : null;
+    }
+    if (r.repeat === 'cycle') {
+      var N = Math.max(1, task.cycleDays || 1);
+      var base = startOfDay(task.cycleStart || fromTs);
+      var pp = parseTime(r.time);
+      if (!pp) return null;
+      var k = 0, occ;
+      do {
+        occ = new Date(base + k * N * DAY);
+        occ.setHours(pp.hh, pp.mm, 0, 0);
+        k++;
+      } while (occ.getTime() < fromTs && k < 4000);
+      return occ.getTime() >= fromTs ? occ.getTime() : null;
+    }
+    var day = startOfDay(fromTs);
+    for (var i = 0; i < 400; i++) {
+      var o = occurrenceAt(r, day + i * DAY);
+      if (o !== null && o >= fromTs) return o;
+    }
+    return null;
+  }
+
+  /* 刚刚过去（120 秒内）的那次触发时刻，用于应用内弹窗判断 */
+  function recentOccurrence(r, task, nowTs) {
+    var today = occurrenceAt(r, startOfDay(nowTs));
+    if (today !== null && today <= nowTs && nowTs - today <= 120000) return today;
+    if (r.repeat === 'cycle') {
+      var N = Math.max(1, task.cycleDays || 1);
+      var base = startOfDay(task.cycleStart || nowTs);
+      var p = parseTime(r.time);
+      if (!p) return null;
+      var k = Math.floor((startOfDay(nowTs) - base) / (N * DAY));
+      for (var i = k; i >= 0 && i >= k - 2; i--) {
+        var d = new Date(base + i * N * DAY);
+        d.setHours(p.hh, p.mm, 0, 0);
+        if (d.getTime() <= nowTs && nowTs - d.getTime() <= 120000) return d.getTime();
+      }
+    }
+    return null;
+  }
+
+  function icsEsc(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  }
+
+  /* 生成日历日程文件（.ics）：每个提醒一个日程，按重复规则生成 RRULE + 准点闹钟 */
+  function buildReminderIcs(task) {
+    var list = (task.reminders || []).filter(function (r) { return r.enabled !== false && parseTime(r.time); });
+    if (!list.length) return null;
+    var now = Date.now();
+    var events = [];
+    list.forEach(function (r) {
+      var start = nextOccurrence(r, task, now);
+      if (!start) return;
+      var end = start + 15 * 60000;
+      function fmt(d) {
+        return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+          'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
+      }
+      var rrule = '';
+      if (r.repeat === 'daily') rrule = 'RRULE:FREQ=DAILY';
+      else if (r.repeat === 'weekly') {
+        var map = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+        var days = (r.days || []).slice().sort().map(function (d) { return map[d]; });
+        if (!days.length) return;
+        rrule = 'RRULE:FREQ=WEEKLY;BYDAY=' + days.join(',');
+      } else if (r.repeat === 'cycle') {
+        rrule = 'RRULE:FREQ=DAILY;INTERVAL=' + Math.max(1, task.cycleDays || 1);
+      }
+      events.push([
+        'BEGIN:VEVENT',
+        'UID:task-' + task.id + '-' + r.id + '-' + start + '@task-record',
+        'DTSTAMP:' + fmt(new Date()),
+        'DTSTART:' + fmt(new Date(start)),
+        'DTEND:' + fmt(new Date(end)),
+        rrule,
+        'SUMMARY:' + icsEsc('任务提醒：' + task.name),
+        'DESCRIPTION:' + icsEsc('该去完成任务「' + task.name + '」了（' + reminderLabel(r, task) + '，任务记录工具）'),
+        'BEGIN:VALARM',
+        'TRIGGER:-PT0M',
+        'ACTION:DISPLAY',
+        'DESCRIPTION:' + icsEsc('任务提醒：' + task.name),
+        'END:VALARM',
+        'END:VEVENT'
+      ].filter(function (l) { return l !== ''; }).join('\r\n'));
+    });
+    if (!events.length) return null;
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//\u4efb\u52a1\u8bb0\u5f55\u5de5\u5177//\u4efb\u52a1\u7ba1\u7406//CN',
+      'PRODID:-//任务记录工具//任务管理//CN',
       'CALSCALE:GREGORIAN',
-      'BEGIN:VEVENT',
-      'UID:' + uid,
-      'DTSTAMP:' + fmt(new Date()),
-      'DTSTART:' + fmt(start),
-      'DTEND:' + fmt(end),
-      'RRULE:FREQ=DAILY',
-      'SUMMARY:\u4efb\u52a1\u63d0\u9192\uff1a' + task.name,
-      'DESCRIPTION:\u8be5\u53bb\u5b8c\u6210\u4efb\u52a1\u300c' + task.name + '\u300d\u4e86\uff08\u4efb\u52a1\u8bb0\u5f55\u5de5\u5177\uff09',
-      'BEGIN:VALARM',
-      'TRIGGER:-PT0M',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:\u4efb\u52a1\u63d0\u9192\uff1a' + task.name,
-      'END:VALARM',
-      'END:VEVENT',
+      events.join('\r\n'),
       'END:VCALENDAR'
     ].join('\r\n');
   }
 
-  function downloadReminderIcs(task, timeStr) {
-    var ics = buildReminderIcs(task, timeStr);
-    if (!ics) { toast('提醒时间格式不正确'); return; }
+  function downloadReminderIcs(task) {
+    var ics = buildReminderIcs(task);
+    if (!ics) { toast('当前没有可导出的提醒'); return; }
     var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1229,7 +1445,181 @@
     }, 800);
   }
 
+  /* ---------- 应用内提醒：弹窗 + 提示音 + 稍后提醒 ---------- */
+  var remindQueue = [];
+  var remindPopupOpen = false;
+
+  function playRemindSound() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = playRemindSound._ctx || (playRemindSound._ctx = new Ctx());
+      if (ctx.state === 'suspended') ctx.resume();
+      [0, 0.22].forEach(function (delay) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 880;
+        var t0 = ctx.currentTime + delay;
+        g.gain.setValueAtTime(0.001, t0);
+        g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t0);
+        o.stop(t0 + 0.2);
+      });
+    } catch (e) { /* 不支持音频时静默 */ }
+  }
+
+  function loadFiredReminders() {
+    try { return JSON.parse(localStorage.getItem(FIRED_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveFiredReminders(o) {
+    try {
+      /* 只保留最近 2 天的记录，避免无限增长 */
+      var cutoff = Date.now() - 2 * 86400000, out = {};
+      Object.keys(o).forEach(function (k) { if (o[k] > cutoff) out[k] = o[k]; });
+      localStorage.setItem(FIRED_KEY, JSON.stringify(out));
+    } catch (e) {}
+  }
+  function loadSnoozes() {
+    try { return JSON.parse(localStorage.getItem(SNOOZE_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveSnoozes(o) {
+    try { localStorage.setItem(SNOOZE_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function fireReminder(task, r) {
+    remindQueue.push({ task: task, r: r });
+    pumpRemindQueue();
+  }
+
+  function pumpRemindQueue() {
+    if (remindPopupOpen || !remindQueue.length) return;
+    var item = remindQueue.shift();
+    var task = item.task, r = item.r;
+    remindPopupOpen = true;
+    playRemindSound();
+    openModal(function (sheet, rawClose) {
+      function close() {
+        remindPopupOpen = false;
+        rawClose();
+        setTimeout(pumpRemindQueue, 120);
+      }
+      var bell = document.createElement('div');
+      bell.className = 'remind-bell';
+      bell.innerHTML = '<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+      sheet.appendChild(bell);
+      var title = document.createElement('div');
+      title.className = 'remind-pop-title';
+      title.textContent = '该完成任务了';
+      sheet.appendChild(title);
+      var name = document.createElement('div');
+      name.className = 'remind-pop-task';
+      name.textContent = task.name;
+      sheet.appendChild(name);
+      var meta = document.createElement('div');
+      meta.className = 'remind-pop-meta';
+      var accName = '';
+      data.accounts.forEach(function (a) {
+        a.categories.forEach(function (c) { if (c.tasks.indexOf(task) > -1) accName = a.name; });
+      });
+      meta.textContent = (accName ? accName + ' · ' : '') + r.time + ' · ' + reminderLabel(r, task);
+      sheet.appendChild(meta);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.className = 'btn btn-primary';
+      doneBtn.textContent = '✓ 标记完成';
+      doneBtn.addEventListener('click', function () {
+        if (task.cycleStart === 0 || Date.now() >= resetAt(task)) {
+          task.cycleStart = Date.now();
+          task.count = 1;
+        } else {
+          task.count += 1;
+        }
+        save();
+        render();
+        close();
+        toast('已记录一次完成');
+      });
+      var snoozeBtn = document.createElement('button');
+      snoozeBtn.type = 'button';
+      snoozeBtn.className = 'btn btn-ghost';
+      snoozeBtn.textContent = '10 分钟后再提醒';
+      snoozeBtn.addEventListener('click', function () {
+        var snoozes = loadSnoozes();
+        snoozes[task.id + '|' + r.id] = Date.now() + 10 * 60000;
+        saveSnoozes(snoozes);
+        close();
+        toast('好的，10 分钟后再次提醒');
+      });
+      var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'btn btn-ghost';
+      closeBtn.textContent = '关闭';
+      closeBtn.addEventListener('click', close);
+      actions.appendChild(doneBtn);
+      actions.appendChild(snoozeBtn);
+      actions.appendChild(closeBtn);
+      sheet.appendChild(actions);
+    }, { dismissOnMask: false });
+  }
+
+  /* 周期性检查：到点的提醒弹窗；稍后提醒到点再次触发 */
+  function checkReminders() {
+    var now = Date.now();
+    var fired = loadFiredReminders();
+    var snoozes = loadSnoozes();
+    var dirty = false;
+
+    Object.keys(snoozes).forEach(function (key) {
+      if (snoozes[key] > now) return;
+      var rid = key.split('|')[1];
+      var found = null;
+      data.accounts.some(function (acc) {
+        return acc.categories.some(function (cat) {
+          return cat.tasks.some(function (t) {
+            var hit = (t.reminders || []).some(function (rr) { return rr.id === rid; });
+            if (hit) { found = { task: t, r: (t.reminders || []).filter(function (rr) { return rr.id === rid; })[0] }; return true; }
+            return false;
+          });
+        });
+      });
+      delete snoozes[key];
+      dirty = true;
+      if (found) fireReminder(found.task, found.r);
+    });
+
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        cat.tasks.forEach(function (t) {
+          if (!t.configured || !t.reminders || !t.reminders.length) return;
+          t.reminders.forEach(function (r) {
+            if (r.enabled === false) return;
+            var occ = recentOccurrence(r, t, now);
+            if (!occ) return;
+            var key = t.id + '|' + r.id + '|' + occ;
+            if (fired[key]) return;
+            fired[key] = now;
+            dirty = true;
+            fireReminder(t, r);
+          });
+        });
+      });
+    });
+
+    if (dirty) { saveFiredReminders(fired); saveSnoozes(snoozes); }
+  }
+
+  /* 提醒管理弹窗：多条提醒 + 重复规则（每天 / 每周几 / 跟随任务周期 / 指定日期） */
   function openRemindDialog(task) {
+    /* 复制一份列表，取消时不改动原数据 */
+    var list = (task.reminders || []).map(function (r) {
+      return { id: r.id, time: r.time, repeat: r.repeat, days: (r.days || []).slice(), date: r.date, enabled: r.enabled !== false };
+    });
     openModal(function (sheet, close) {
       var h = document.createElement('h3');
       h.textContent = '设置提醒 · ' + task.name;
@@ -1237,55 +1627,193 @@
       var tip = document.createElement('p');
       tip.className = 'hint';
       tip.style.textAlign = 'left';
-      tip.innerHTML = '选择提醒时间，将按设定时间<strong>每天</strong>提醒（通过系统日历日程实现）。' +
-        (task.remind ? '<br>当前提醒：每天 <strong>' + task.remind + '</strong>' : '<br>当前未设置提醒。');
+      tip.innerHTML = '可添加<strong>多条提醒</strong>，支持每天 / 每周几 / 跟随任务周期 / 指定日期。<br>页面打开时到点会<strong>弹出提醒</strong>并响铃；也可导出 .ics 到系统日历（关掉页面也能提醒）。';
       sheet.appendChild(tip);
 
-      var chosen = task.remind || '';
+      /* 已有提醒列表 */
+      var listWrap = document.createElement('div');
+      listWrap.style.margin = '12px 0 4px';
+      function paintList() {
+        listWrap.innerHTML = '';
+        if (!list.length) {
+          var empty = document.createElement('p');
+          empty.className = 'hint';
+          empty.style.margin = '4px 0';
+          empty.textContent = '当前没有提醒';
+          listWrap.appendChild(empty);
+          return;
+        }
+        list.forEach(function (r, idx) {
+          var row = document.createElement('div');
+          row.className = 'remind-item';
+          var label = document.createElement('span');
+          label.className = 'r-label';
+          label.textContent = reminderLabel(r, task);
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'r-del';
+          del.textContent = '✕';
+          del.title = '删除这条提醒';
+          del.addEventListener('click', function () {
+            list.splice(idx, 1);
+            paintList();
+          });
+          row.appendChild(label);
+          row.appendChild(del);
+          listWrap.appendChild(row);
+        });
+      }
+      paintList();
+      sheet.appendChild(listWrap);
 
-      /* 三个快捷选项 */
-      var list = document.createElement('div');
-      list.style.cssText = 'display:flex;gap:8px;margin:12px 0 4px;';
-      function paint() {
-        Array.prototype.forEach.call(list.children, function (c, i) {
-          var on = REMIND_PRESETS[i].value === chosen;
-          c.style.background = on ? 'var(--accent)' : '#f8f9fa';
-          c.style.color = on ? '#fff' : 'var(--text)';
-          c.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+      /* 添加新提醒 */
+      var addTitle = document.createElement('div');
+      addTitle.style.cssText = 'font-size:13px;color:var(--muted);margin:10px 0 6px;';
+      addTitle.textContent = '＋ 添加提醒';
+      sheet.appendChild(addTitle);
+
+      var chosenTime = '09:00';
+      var repeat = 'daily';
+      var days = [];
+      var dateVal = '';
+
+      /* 快捷时间 */
+      var timeSeg = document.createElement('div');
+      timeSeg.className = 'seg';
+      function paintTimeSeg() {
+        Array.prototype.forEach.call(timeSeg.children, function (c, i) {
+          c.classList.toggle('on', REMIND_PRESETS[i].value === chosenTime);
         });
       }
       REMIND_PRESETS.forEach(function (p) {
         var b = document.createElement('button');
         b.type = 'button';
         b.textContent = p.label;
-        b.style.cssText = 'flex:1;padding:10px 2px;border-radius:10px;border:1px solid var(--border);background:#f8f9fa;color:var(--text);font-size:13px;cursor:pointer;';
         b.addEventListener('click', function () {
-          chosen = p.value;
-          customInput.value = p.value;
-          paint();
+          chosenTime = p.value;
+          timeInput.value = p.value;
+          paintTimeSeg();
         });
-        list.appendChild(b);
+        timeSeg.appendChild(b);
       });
-      sheet.appendChild(list);
-      paint();
+      sheet.appendChild(timeSeg);
 
-      /* 自定义时间 */
-      var wrap = document.createElement('div');
-      wrap.className = 'field';
-      var l = document.createElement('label');
-      l.textContent = '自定义时间（也可直接修改）';
-      wrap.appendChild(l);
-      var customInput = document.createElement('input');
-      customInput.type = 'time';
-      customInput.value = task.remind || '09:00';
-      customInput.addEventListener('input', function () {
-        if (customInput.value) {
-          chosen = customInput.value;
-          paint();
-        }
+      var timeWrap = document.createElement('div');
+      timeWrap.className = 'field';
+      var timeLabel = document.createElement('label');
+      timeLabel.textContent = '提醒时间（可自定义）';
+      timeWrap.appendChild(timeLabel);
+      var timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.value = chosenTime;
+      timeInput.addEventListener('input', function () {
+        if (timeInput.value) { chosenTime = timeInput.value; paintTimeSeg(); }
       });
-      wrap.appendChild(customInput);
-      sheet.appendChild(wrap);
+      timeWrap.appendChild(timeInput);
+      sheet.appendChild(timeWrap);
+      paintTimeSeg();
+
+      /* 重复方式 */
+      var repeatWrap = document.createElement('div');
+      repeatWrap.className = 'field';
+      var repeatLabelEl = document.createElement('label');
+      repeatLabelEl.textContent = '重复方式';
+      repeatWrap.appendChild(repeatLabelEl);
+      var repeatSeg = document.createElement('div');
+      repeatSeg.className = 'seg';
+      function paintRepeatSeg() {
+        Array.prototype.forEach.call(repeatSeg.children, function (c) {
+          c.classList.toggle('on', c.dataset.v === repeat);
+        });
+      }
+      REPEAT_OPTIONS.forEach(function (o) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = o.label;
+        b.dataset.v = o.value;
+        b.addEventListener('click', function () {
+          repeat = o.value;
+          paintRepeatSeg();
+          paintExtra();
+        });
+        repeatSeg.appendChild(b);
+      });
+      repeatWrap.appendChild(repeatSeg);
+      sheet.appendChild(repeatWrap);
+      paintRepeatSeg();
+
+      /* 重复方式的附加选项（星期几 / 周期说明 / 日期） */
+      var extra = document.createElement('div');
+      sheet.appendChild(extra);
+      function paintExtra() {
+        extra.innerHTML = '';
+        if (repeat === 'weekly') {
+          var row = document.createElement('div');
+          row.className = 'week-row';
+          WEEK_LABELS.forEach(function (w, i) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = w;
+            b.classList.toggle('on', days.indexOf(i) > -1);
+            b.addEventListener('click', function () {
+              var idx = days.indexOf(i);
+              if (idx > -1) days.splice(idx, 1); else days.push(i);
+              b.classList.toggle('on', days.indexOf(i) > -1);
+            });
+            row.appendChild(b);
+          });
+          extra.appendChild(row);
+          var hint = document.createElement('p');
+          hint.className = 'hint';
+          hint.style.textAlign = 'left';
+          hint.style.margin = '0 0 8px';
+          hint.textContent = '选择每周哪几天提醒';
+          extra.appendChild(hint);
+        } else if (repeat === 'cycle') {
+          var hint2 = document.createElement('p');
+          hint2.className = 'hint';
+          hint2.style.textAlign = 'left';
+          hint2.style.margin = '0 0 8px';
+          hint2.textContent = '跟随任务刷新周期：每 ' + Math.max(1, task.cycleDays || 1) + ' 日提醒一次（与清零周期同步）';
+          extra.appendChild(hint2);
+        } else if (repeat === 'date') {
+          var wrap = document.createElement('div');
+          wrap.className = 'field';
+          var l = document.createElement('label');
+          l.textContent = '提醒日期（仅一次）';
+          wrap.appendChild(l);
+          var di = document.createElement('input');
+          di.type = 'date';
+          di.value = dateVal || new Date().toISOString().slice(0, 10);
+          di.addEventListener('input', function () { dateVal = di.value; });
+          wrap.appendChild(di);
+          extra.appendChild(wrap);
+        }
+      }
+      paintExtra();
+
+      /* 添加按钮 */
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-primary';
+      addBtn.textContent = '＋ 添加这条提醒';
+      addBtn.style.cssText = 'width:100%;margin-top:4px;';
+      addBtn.addEventListener('click', function () {
+        if (!parseTime(chosenTime)) { toast('请选择或输入提醒时间'); return; }
+        if (repeat === 'weekly' && !days.length) { toast('请至少选择一个星期几'); return; }
+        if (repeat === 'date' && !dateVal) { toast('请选择提醒日期'); return; }
+        list.push({
+          id: genId(),
+          time: chosenTime,
+          repeat: repeat,
+          days: days.slice(),
+          date: repeat === 'date' ? dateVal : '',
+          enabled: true
+        });
+        paintList();
+        toast('已添加 ' + reminderLabel(list[list.length - 1], task));
+      });
+      sheet.appendChild(addBtn);
 
       var actions = document.createElement('div');
       actions.className = 'sheet-actions';
@@ -1295,33 +1823,29 @@
       cancelBtn.className = 'btn btn-ghost';
       cancelBtn.textContent = '取消';
       cancelBtn.addEventListener('click', close);
-      var clearBtn = document.createElement('button');
-      clearBtn.type = 'button';
-      clearBtn.className = 'btn btn-ghost';
-      clearBtn.textContent = '清除提醒';
-      clearBtn.style.color = 'var(--danger)';
-      clearBtn.addEventListener('click', function () {
-        task.remind = null;
+      var icsBtn = document.createElement('button');
+      icsBtn.type = 'button';
+      icsBtn.className = 'btn btn-ghost';
+      icsBtn.textContent = '导出到日历';
+      icsBtn.addEventListener('click', function () {
+        task.reminders = list;
         save();
         render();
-        close();
-        toast('已清除提醒');
+        downloadReminderIcs(task);
       });
       var okBtn = document.createElement('button');
       okBtn.type = 'button';
       okBtn.className = 'btn btn-primary';
-      okBtn.textContent = '保存并加入日历';
+      okBtn.textContent = '保存';
       okBtn.addEventListener('click', function () {
-        if (!/^\d{2}:\d{2}$/.test(chosen)) { toast('请选择或输入提醒时间'); return; }
-        task.remind = chosen;
+        task.reminders = list;
         save();
         render();
-        downloadReminderIcs(task, chosen);
         close();
-        toast('提醒已设置：每天 ' + chosen + '，日历日程已生成');
+        toast(list.length ? '已保存 ' + list.length + ' 条提醒' : '已清除全部提醒');
       });
       actions.appendChild(cancelBtn);
-      actions.appendChild(clearBtn);
+      actions.appendChild(icsBtn);
       actions.appendChild(okBtn);
       sheet.appendChild(actions);
     });
@@ -1559,7 +2083,7 @@
               nt.configured = t.configured;
               nt.name = t.name;
               nt.cycleDays = t.cycleDays;
-              nt.remind = t.remind || null;
+              nt.reminders = JSON.parse(JSON.stringify(t.reminders || []));
               nc.tasks.push(nt);
             });
             acc.categories.push(nc);
@@ -1741,7 +2265,7 @@
       if (b.isIOS) {
         html = 'iPhone / iPad（Safari）：<br>1. 点击底部<strong>分享按钮</strong>（□↑）<br>2. 选择「<strong>添加到主屏幕</strong>」<br>3. 点击「添加」，桌面显示名称「<strong>任务管理</strong>」';
       } else if (b.isHarmony) {
-        html = '鸿蒙手机（华为/鸿蒙浏览器）：<br>1. 点击浏览器<strong>底部工具栏</strong>或右上角<strong>菜单</strong>（⋮ / ⌄）<br>2. 选择「<strong>添加到桌面</strong>」（部分版本在「工具箱 / 更多」内，也可能叫「安装应用」「桌面快捷方式」）<br>3. 确认后桌面显示名称「<strong>任务管理</strong>」';
+        html = '鸿蒙手机（华为/鸿蒙浏览器）：<br>1. 点击浏览器<strong>右下角菜单按钮</strong>（⋮ / ⌄ /「更多」）或底部「工具箱」<br>2. 在弹出面板的「<strong>常用功能</strong>」里点「<strong>＋ 添加至桌面</strong>」<br>3. 确认后桌面显示名称「<strong>任务管理</strong>」<br><br>小提示：各品牌浏览器都不允许网页直接代点这个菜单，需要手动点一次；点过一次后浏览器通常会记住，下次可从桌面直接打开。';
       } else if (b.isWeixin) {
         html = '微信内置浏览器：<br>1. 点击右上角 <strong>⋯</strong><br>2. 选择「<strong>在浏览器中打开</strong>」<br>3. 在浏览器中再次打开本页面，然后按该方法添加到桌面';
       } else if (b.isMi) {
@@ -1819,12 +2343,14 @@
   render();
   updateAuthUI();
   updateInstallBtn();
+  checkReminders();
   if (auth && apiConfigured()) {
     /* 保持登录状态：自动拉取云端最新数据 */
     pullData(false);
   }
   setInterval(function () {
     checkCycles();
+    checkReminders();
     if (auth) pullData(true);
   }, 30000);
   document.addEventListener('visibilitychange', function () {
