@@ -1516,11 +1516,13 @@
     function startDrag(x, y) {
       var r = btn.getBoundingClientRect();
       press.dragging = true;
-      press.offX = x - r.left;
-      press.offY = y - r.top;
+      press.offX = press.x - r.left;
+      press.offY = press.y - r.top;
       var clone = btn.cloneNode(true);
       clone.className = btn.className;
       clone.classList.add('drag-clone');
+      clone.style.position = 'fixed';
+      clone.style.margin = '0';
       clone.style.width = r.width + 'px';
       clone.style.height = r.height + 'px';
       clone.style.left = r.left + 'px';
