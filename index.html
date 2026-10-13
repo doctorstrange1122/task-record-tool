@@ -282,29 +282,22 @@
   .clip-expand svg { width: 18px; height: 18px; display: block; }
   .clip-actions {
     display: flex;
+    gap: 8px;
     margin-top: 10px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
   }
   .clip-actions button {
     flex: 1;
     border: none;
-    border-radius: 0;
-    padding: 10px 0;
-    font-size: 13px;
+    border-radius: 10px;
+    padding: 11px 0;
+    font-size: 13.5px;
     font-weight: 600;
     cursor: pointer;
     color: #fff;
-    transition: opacity .15s;
+    background: var(--accent);
+    transition: opacity .15s, background .15s;
   }
   .clip-actions button:active { opacity: .82; }
-  .clip-actions button + button { border-left: 1px solid rgba(125, 135, 145, .45); }
-  .clip-actions .clip-paste { background: var(--chip-bg); color: var(--text); }
-  .clip-actions .clip-clear { background: var(--chip-bg); color: var(--text); }
-  .clip-actions .clip-submit { background: var(--accent); }
-  .clip-actions .clip-sync { background: var(--green); }
-  .clip-actions .clip-save { background: var(--green); }
   .clip-list { margin-top: 12px; }
   .clip-item {
     display: flex;
