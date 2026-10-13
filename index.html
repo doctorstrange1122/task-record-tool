@@ -122,11 +122,12 @@
     padding: calc(9px + env(safe-area-inset-top)) 12px 7px;
   }
   h1 {
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 26px;
+    font-weight: 800;
     text-align: center;
     letter-spacing: .5px;
     white-space: nowrap;
+    color: var(--accent);
   }
   .head-pill {
     border: none;
@@ -221,44 +222,68 @@
   }
   .clip-title { font-size: 15px; font-weight: 700; }
   .clip-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .clip-hint {
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--muted);
-    text-align: center;
+  .clip-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
   }
   .clip-input {
-    width: 100%;
-    min-height: 76px;
+    flex: 1;
+    min-width: 0;
+    height: 40px;
     border: 1px solid var(--border);
     background: var(--field-bg);
     border-radius: 12px;
-    padding: 11px 12px;
+    padding: 9px 12px;
     font-size: 14px;
     line-height: 1.5;
     color: var(--text);
-    resize: none;
     outline: none;
     font-family: inherit;
   }
+  /* 放大弹窗里的大输入框仍为多行 textarea */
+  textarea.clip-input {
+    height: auto;
+    min-height: 240px;
+    resize: none;
+  }
   .clip-input:focus { border-color: var(--accent); background: var(--card); }
+  .clip-expand {
+    flex: 0 0 auto;
+    width: 40px;
+    border: 1px solid var(--border);
+    background: var(--chip-bg);
+    color: var(--muted);
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background .15s, color .15s;
+  }
+  .clip-expand:active { background: var(--chip-press); }
+  .clip-expand svg { width: 18px; height: 18px; display: block; }
   .clip-actions {
     display: flex;
-    gap: 8px;
     margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
   }
   .clip-actions button {
     flex: 1;
     border: none;
-    border-radius: 10px;
+    border-radius: 0;
     padding: 10px 0;
     font-size: 13.5px;
     font-weight: 600;
     cursor: pointer;
     color: #fff;
-    transition: opacity .15s, background .15s;
+    transition: opacity .15s;
   }
   .clip-actions button:active { opacity: .82; }
+  .clip-actions button + button { border-left: 1px solid rgba(125, 135, 145, .45); }
   .clip-actions .clip-paste { background: var(--accent); }
   .clip-actions .clip-save { background: var(--green); }
   .clip-actions .clip-clear { background: var(--chip-bg); color: var(--text); }
@@ -307,7 +332,6 @@
   }
   .clip-del:active { background: var(--danger-press); color: var(--danger); }
   .clip-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 22px 0; }
-  .clip-tip { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
 
   /* ---------- 主体：分类容器 ---------- */
   main { max-width: 720px; margin: 0 auto; padding: 14px 12px 0; }
@@ -910,6 +934,10 @@
   var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
   var clipboardView = false;             /* 当前是否显示剪贴板面板 */
   var clipDraft = '';                     /* 剪贴板输入框草稿：切走 tab 再回来不丢失 */
+  /* 输入框为单行 input，仅显示预览；完整内容（含换行）始终存在 clipDraft */
+  function clipSingleLine(t) {
+    return String(t || '').replace(/\r\n|\r|\n/g, ' ');
+  }
   var TAB_KEY = 'taskRecordTool.tab';     /* 记住上次停留的 tab */
 
   /* 保存当前激活 tab（剪贴板 / 某个账号）到本地 */
@@ -991,7 +1019,8 @@
     var ta = document.getElementById('clipInput');
     readSystemClipboard().then(function (t) {
       t = (t || '').trim();
-      if (ta) { ta.value = t; clipDraft = t; ta.focus(); }
+      clipDraft = t;
+      if (ta) { ta.value = clipSingleLine(t); ta.focus(); }
       if (t) { toast('已粘贴到输入框'); }
       else { toast('未能读取剪贴板，请长按输入框手动粘贴'); }
     }).catch(function () {
@@ -1003,7 +1032,7 @@
   /* 「保存」按钮：把输入框内容存入剪贴板记录 */
   function onClipSave() {
     var ta = document.getElementById('clipInput');
-    var v = ta ? (ta.value || '').trim() : '';
+    var v = (clipDraft || '').trim();
     if (!v) { toast('请先输入或粘贴内容'); return; }
     clipDraft = '';
     if (ta) { ta.value = ''; ta.blur(); }
@@ -1015,6 +1044,43 @@
     var ta = document.getElementById('clipInput');
     clipDraft = '';
     if (ta) { ta.value = ''; ta.focus(); }
+  }
+
+  /* 放大输入框：弹出大编辑弹窗（不在原界面放大），完成后写回小输入框 */
+  function openClipExpandSheet() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '编辑内容';
+      sheet.appendChild(h);
+      var small = document.getElementById('clipInput');
+      var ta = document.createElement('textarea');
+      ta.className = 'clip-input';
+      ta.rows = 8;
+      ta.placeholder = '粘贴或输入要保存的内容';
+      ta.setAttribute('aria-label', '剪贴板内容');
+      ta.value = clipDraft;
+      sheet.appendChild(ta);
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-ghost';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', close);
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '完成';
+      ok.addEventListener('click', function () {
+        clipDraft = ta.value;
+        if (small) { small.value = clipSingleLine(ta.value); }
+        close();
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(ok);
+      sheet.appendChild(actions);
+      setTimeout(function () { try { ta.focus(); } catch (e) {} }, 120);
+    });
   }
 
   function saveClipRecord(text) {
@@ -1051,15 +1117,31 @@
     head.appendChild(title);
     panel.appendChild(head);
 
-    var input = document.createElement('textarea');
+    /* 输入框（单行高）+ 右侧放大按钮 */
+    var inputRow = document.createElement('div');
+    inputRow.className = 'clip-input-row';
+    var input = document.createElement('input');
+    input.type = 'text';
     input.id = 'clipInput';
     input.className = 'clip-input';
-    input.rows = 3;
     input.placeholder = '粘贴或输入要保存的内容';
-    input.value = clipDraft;
+    input.value = clipSingleLine(clipDraft);
     input.addEventListener('input', function () { clipDraft = input.value; });
-    panel.appendChild(input);
+    inputRow.appendChild(input);
+    var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'clip-expand';
+    expandBtn.title = '放大输入框';
+    expandBtn.setAttribute('aria-label', '放大输入框');
+    expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/>' +
+      '<polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/>' +
+      '<line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    expandBtn.addEventListener('click', openClipExpandSheet);
+    inputRow.appendChild(expandBtn);
+    panel.appendChild(inputRow);
 
+    /* 三个按钮：同一容器，中间分隔线 */
     var actions = document.createElement('div');
     actions.className = 'clip-actions';
     var pasteBtn = document.createElement('button');
@@ -1082,20 +1164,10 @@
     actions.appendChild(clearBtn);
     panel.appendChild(actions);
 
-    var hint = document.createElement('div');
-    hint.className = 'clip-hint';
-    hint.textContent = '「粘贴」尝试读取系统剪贴板；若读取失败，请长按输入框选择「粘贴」，再点「保存」';
-    panel.appendChild(hint);
-
     var list = document.createElement('div');
     list.className = 'clip-list';
     list.id = 'clipList';
     panel.appendChild(list);
-
-    var tip = document.createElement('div');
-    tip.className = 'clip-tip';
-    tip.textContent = '提示：点击任意记录可复制到剪贴板；记录保存 48 小时后自动删除。';
-    panel.appendChild(tip);
 
     main.appendChild(panel);
     renderClipboardList();
