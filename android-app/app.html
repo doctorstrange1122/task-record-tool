@@ -887,6 +887,17 @@
     color: var(--text);
     margin: 6px 0 14px;
   }
+  /* 页面标题容器：任务统计 / 跨设备剪贴板 各用「独立容器」，两容器尺寸完全一致，文字水平+垂直居中 */
+  .page-title {
+    height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+  }
   .app-manage-btn {
     display: inline-flex; align-items: center; gap: 5px; border: none; cursor: pointer;
     background: var(--chip-bg); color: var(--text); border-radius: 999px;
@@ -898,7 +909,8 @@
 </head>
 <body>
 <header>
-  <div class="section-title" id="pageTitle" style="display:none">任务统计</div>
+  <div class="page-title" id="taskTitle" style="display:none">任务统计</div>
+  <div class="page-title" id="clipTitle" style="display:none">跨设备剪贴板</div>
   <div class="head-row"></div>
   <div class="acc-manage-row" id="accManageRow">
     <nav class="tab-bar" id="tabBar"></nav>
@@ -1534,16 +1546,11 @@
     if (bar) bar.style.display = hideTop ? 'none' : '';
     var row = document.getElementById('accManageRow');
     if (row) row.style.display = hideTop ? 'none' : '';
-    /* 页面标题：任务页 / 剪贴板页各用自己的标题，控件同源（同一容器、同一等级）；「我的」页无标题 */
-    var pageTitleEl = document.getElementById('pageTitle');
-    if (pageTitleEl) {
-      if (meView) {
-        pageTitleEl.style.display = 'none';
-      } else {
-        pageTitleEl.style.display = '';
-        pageTitleEl.textContent = clipboardView ? '跨设备剪贴板' : '任务统计';
-      }
-    }
+    /* 页面标题：两个页面各用「独立容器」（任务统计 / 跨设备剪贴板），尺寸一致、文字水平+垂直居中；「我的」页无标题 */
+    var taskTitleEl = document.getElementById('taskTitle');
+    var clipTitleEl = document.getElementById('clipTitle');
+    if (taskTitleEl) taskTitleEl.style.display = (!clipboardView && !meView) ? '' : 'none';
+    if (clipTitleEl) clipTitleEl.style.display = (clipboardView && !meView) ? '' : 'none';
   }
 
   function renderTabs() {
@@ -2041,6 +2048,11 @@
     },
     version: function () {
       try { return window.AndroidHost ? (window.AndroidHost.appVersion() || '') : ''; } catch (e) { return ''; }
+    },
+    /* App 内提醒响铃 + 震动：由原生播放系统闹铃音（WebView 的 WebAudio 常被自动播放策略拦截而无声） */
+    playAlarm: function () {
+      try { if (window.AndroidHost && window.AndroidHost.playAlarm) { window.AndroidHost.playAlarm(); return true; } } catch (e) {}
+      return false;
     },
     /* 系统提醒：把全部启用中的提醒规则（含 JS 算好的 nextAt）下发原生 AlarmManager 排程 */
     syncReminders: function (json) {
@@ -2954,6 +2966,8 @@
   var remindPopupOpen = false;
 
   function playRemindSound() {
+    /* App 内：优先由原生播放系统闹铃音 + 震动（最可靠）；WebView 的 WebAudio 常被自动播放策略拦截，导致无声 */
+    if (IN_APP && Native.available() && Native.playAlarm()) return;
     try {
       var Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -4242,9 +4256,12 @@
     }
     if (auth) pullData(true);
   }, 30000);
+  /* 提醒单独用更短的轮询：即使系统闹钟被系统延后，页面在前台时也能尽快弹出（与云同步 30s 频率解耦） */
+  setInterval(checkReminders, 10000);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
       checkCycles();
+      checkReminders(); /* 回到前台立即检查到点提醒，减少延迟 */
       /* 悬浮窗（另一个 WebView）可能刚写入过记录 / 任务计数：重新读取本机数据 */
       data = loadData();
       render();
