@@ -247,6 +247,13 @@
     min-height: 240px;
     resize: none;
   }
+  /* 记录容器顶部提示 */
+  .clip-copy-hint {
+    font-size: 12.5px;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 10px;
+  }
   /* 放大编辑弹窗：纵向弹性布局，输入框撑满标题与按钮之间的全部空间 */
   .sheet.clip-edit {
     display: flex;
@@ -1174,12 +1181,21 @@
     actions.appendChild(clearBtn);
     panel.appendChild(actions);
 
+    main.appendChild(panel);
+
+    /* 容器二：保存的记录（独立卡片） */
+    var listPanel = document.createElement('section');
+    listPanel.className = 'category';
+    var copyHint = document.createElement('div');
+    copyHint.className = 'clip-copy-hint';
+    copyHint.textContent = '👇点击记录即可复制';
+    listPanel.appendChild(copyHint);
     var list = document.createElement('div');
     list.className = 'clip-list';
     list.id = 'clipList';
-    panel.appendChild(list);
+    listPanel.appendChild(list);
+    main.appendChild(listPanel);
 
-    main.appendChild(panel);
     renderClipboardList();
   }
 
