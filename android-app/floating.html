@@ -194,6 +194,26 @@
   }
   .fp-save-btn:active { opacity: .85; }
   .fp-save-btn:disabled { opacity: .5; cursor: default; }
+  /* 云同步双按钮：提交同步 / 拉取 */
+  .fp-sync-row {
+    display: flex;
+    gap: 8px;
+    margin: -2px 0 12px;
+  }
+  .fp-sync-btn {
+    flex: 1 1 0;
+    border: 1.5px solid var(--accent);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 10px 0;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .fp-sync-btn:active { background: var(--chip-bg); }
+  .fp-sync-btn:disabled { opacity: .5; cursor: default; }
   .fp-list-title {
     font-size: 10px;
     color: var(--muted);
@@ -441,6 +461,12 @@
   var suppressSync = false;
   var syncTimer = null;
   function apiConfigured() { return /^https?:\/\//.test(API_BASE); }
+  function saveAuth() {
+    try {
+      if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      else localStorage.removeItem(AUTH_KEY);
+    } catch (e) {}
+  }
   function apiFetch(path, opts, token) {
     opts = opts || {};
     var headers = { 'Content-Type': 'application/json' };
@@ -448,20 +474,77 @@
     if (t) headers['Authorization'] = 'Bearer ' + t;
     return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
   }
+  function writeLocal() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+  /* 剪贴板按 id 求并集（冲突/拉取时避免丢记录），最多保留 60 条 */
+  function mergeClipboards(a, b) {
+    var map = {};
+    (b || []).forEach(function (c) { if (c && c.id) map[c.id] = c; });
+    (a || []).forEach(function (c) { if (c && c.id) map[c.id] = c; });
+    var out = Object.keys(map).map(function (k) { return map[k]; });
+    out.sort(function (x, y) { return y.at - x.at; });
+    return out.slice(0, 60);
+  }
   function scheduleSync(delay) {
     if (suppressSync) return;
     if (!auth || !apiConfigured()) return;
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = setTimeout(function () { pushData(true); }, delay || 800);
   }
+  /* 提交同步：上传本地数据；务必带 base（否则服务端判定冲突 409 直接拒绝）。
+     若云端有新写入（409），先拉取并把本地剪贴板并入，再提交一次。 */
   function pushData(quiet) {
-    if (!auth || !apiConfigured()) return Promise.resolve();
-    return apiFetch('/api/data', { method: 'PUT', body: JSON.stringify({ data: data }) })
-      .then(function (res) {
-        if (res.status === 401) { auth = null; try { localStorage.removeItem(AUTH_KEY); } catch (e) {} }
-        return res.json().catch(function () { return {}; });
-      })
-      .catch(function () { /* 离线静默失败，主界面打开时会补传 */ });
+    if (!auth || !apiConfigured()) return Promise.resolve({ ok: false, error: '未登录' });
+    var localClips = (data.clipboards || []).slice();
+    function put() {
+      return apiFetch('/api/data', {
+        method: 'PUT',
+        body: JSON.stringify({ data: data, base: auth.lastSync || null })
+      }).then(function (res) {
+        if (res.status === 401) { auth = null; saveAuth(); return { ok: false, error: '登录已失效，请到主界面重新登录' }; }
+        return res.json().catch(function () { return {}; }).then(function (r) {
+          if (res.ok) { auth.lastSync = r.updated_at; saveAuth(); return { ok: true }; }
+          if (res.status === 409) return { conflict: true };
+          return { ok: false, error: r.error || ('同步失败(' + res.status + ')') };
+        });
+      });
+    }
+    return put().then(function (r) {
+      if (!r.conflict) return r;
+      return pullData(true, true).then(function () {
+        data.clipboards = mergeClipboards(localClips, data.clipboards);
+        writeLocal();
+        return put();
+      });
+    }).catch(function () { return { ok: false, error: '网络异常，请检查网络' }; });
+  }
+  /* 拉取：以云端为准覆盖本机，并把本地剪贴板并入（不丢记录） */
+  function pullData(quiet, force) {
+    if (!auth || !apiConfigured()) return Promise.resolve({ ok: false, error: '未登录' });
+    return apiFetch('/api/data').then(function (res) {
+      if (res.status === 401) { auth = null; saveAuth(); return { ok: false, error: '登录已失效，请到主界面重新登录' }; }
+      return res.json().catch(function () { return {}; }).then(function (r) {
+        if (!res.ok) return { ok: false, error: r.error || '拉取失败' };
+        var serverAt = r.updated_at || 0;
+        var newer = serverAt > (auth.lastSync || 0);
+        if (r.data && (force || newer)) {
+          var localClips = (data.clipboards || []).slice();
+          suppressSync = true;
+          data = r.data;
+          if (!Array.isArray(data.clipboards)) data.clipboards = [];
+          data.clipboards = mergeClipboards(localClips, data.clipboards);
+          pruneClipboards();
+          if (newer) auth.lastSync = serverAt;
+          saveAuth();
+          writeLocal();
+          suppressSync = false;
+          return { ok: true, updated: newer };
+        }
+        if (newer) { auth.lastSync = serverAt; saveAuth(); }
+        return { ok: true, updated: false };
+      });
+    }).catch(function () { return { ok: false, error: '网络异常，请检查网络' }; });
   }
 
   /* ================= 周期逻辑（与主界面一致） ================= */
@@ -631,6 +714,37 @@
       render();
     });
     body.appendChild(saveBtn);
+
+    /* 云同步：提交同步（上传）/ 拉取（下载）——不打开主界面也能手动同步 */
+    var syncRow = document.createElement('div');
+    syncRow.className = 'fp-sync-row';
+    var pushBtn = document.createElement('button');
+    pushBtn.type = 'button';
+    pushBtn.className = 'fp-sync-btn';
+    pushBtn.textContent = '提交同步';
+    pushBtn.addEventListener('click', function () {
+      if (!auth) { toast('请先到主界面登录账号'); return; }
+      pushBtn.disabled = true;
+      pushData(false).then(function (r) {
+        toast(r.ok ? '已提交同步' : (r.error || '同步失败'));
+        render();
+      });
+    });
+    var pullBtn = document.createElement('button');
+    pullBtn.type = 'button';
+    pullBtn.className = 'fp-sync-btn';
+    pullBtn.textContent = '拉取';
+    pullBtn.addEventListener('click', function () {
+      if (!auth) { toast('请先到主界面登录账号'); return; }
+      pullBtn.disabled = true;
+      pullData(false, true).then(function (r) {
+        toast(r.ok ? (r.updated ? '已拉取最新记录' : '已是最新') : (r.error || '拉取失败'));
+        render();
+      });
+    });
+    syncRow.appendChild(pushBtn);
+    syncRow.appendChild(pullBtn);
+    body.appendChild(syncRow);
 
     /* 记录列表 */
     var title = document.createElement('div');
