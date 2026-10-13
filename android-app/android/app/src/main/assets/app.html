@@ -1,0 +1,4303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<title>任务管理</title>
+<script>
+  /* 主题初始化：先于渲染执行，避免深浅色闪烁；无手动选择时跟随系统 */
+  (function () {
+    try {
+      var t = localStorage.getItem('taskRecordTool.theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', t === 'dark' ? '#17191c' : '#ffffff');
+      var ACC = { blue: 1, green: 1, violet: 1, orange: 1, red: 1, teal: 1 };
+      var a = localStorage.getItem('taskRecordTool.accent');
+      document.documentElement.setAttribute('data-accent', ACC[a] ? a : 'blue');
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root {
+    --gray: #5c6672;
+    --green: #2f9e44;
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #212529;
+    --muted: #868e96;
+    --accent: #339af0;
+    --accent-deep: #1c7ed6;
+    --danger: #e03131;
+    --border: #e9ecef;
+    --radius: 14px;
+    /* 语义化表面色（深色模式整体覆盖） */
+    --header-bg: rgba(255, 255, 255, .94);   /* 顶栏半透明底 */
+    --chip-bg: #f1f3f5;                       /* 扁平控件底（tab / 图标按钮 / 计数按钮等） */
+    --chip-press: #e9ecef;                    /* 扁平控件按压态 */
+    --field-bg: #f8f9fa;                      /* 输入框 / 分段按钮底 */
+    --press-bg: #f8f9fa;                      /* 列表项按压态 */
+    --divider: #f1f3f5;                       /* 细分隔线 */
+    --ok-bg: #edfaf0;                         /* 登录成功 pill 底 */
+    --ok-border: #a9d8b6;
+    --dashed-border: #97a1ac;                 /* 添加类虚线按钮边框 */
+    --dashed-text: #495057;                   /* 添加类虚线按钮文字 */
+    --dashed-hover: #eef1f4;                  /* 添加类虚线按钮按压态 */
+    --unset-bg: #c3cad2;                      /* 未设置任务按钮 */
+    --unset-text: #454e57;
+    --unset-border: #8f99a3;
+    --bell-bg: rgba(255, 255, 255, .92);      /* 任务按钮内铃铛底 */
+    --bell-text: #495057;
+    --danger-bg: #fff0f0;                     /* 危险按钮淡红底 */
+    --danger-press: #ffe3e3;                  /* 删除按钮按压淡红底 */
+    --mask-bg: rgba(15, 23, 42, .45);         /* 弹窗遮罩 */
+    --toast-bg: rgba(33, 37, 41, .9);         /* 轻提示 */
+    --toast-text: #fff;
+  }
+  /* ---------- 深色模式 ---------- */
+  :root[data-theme="dark"] {
+    --bg: #17191c;
+    --card: #22262b;
+    --text: #e9ecef;
+    --muted: #9ba1a9;
+    --accent-deep: #1864ab;
+    --danger: #ff6b6b;
+    --border: #343a40;
+    --header-bg: rgba(24, 27, 31, .94);
+    --chip-bg: #2c3136;
+    --chip-press: #3a4147;
+    --field-bg: #262b30;
+    --press-bg: #2c3136;
+    --divider: #2c3136;
+    --ok-bg: rgba(47, 158, 68, .16);
+    --ok-border: rgba(47, 158, 68, .48);
+    --dashed-border: #5c6672;
+    --dashed-text: #c8cdd3;
+    --dashed-hover: #2c3136;
+    --unset-bg: #3a4147;
+    --unset-text: #c8cdd3;
+    --unset-border: #5c6672;
+    --bell-bg: rgba(30, 34, 38, .92);
+    --bell-text: #f1f3f5;
+    --danger-bg: rgba(255, 107, 107, .14);
+    --danger-press: rgba(255, 107, 107, .2);
+    --mask-bg: rgba(0, 0, 0, .62);
+    --toast-bg: rgba(233, 236, 239, .94);
+    --toast-text: #1a1d21;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
+  /* 仅表单控件允许选中文本，便于输入与编辑 */
+  input, textarea, select { -webkit-user-select: text; user-select: text; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+  button { font-family: inherit; }
+
+  /* ---------- 顶部：添加到桌面 / 标题 / 登录 ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--header-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .head-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: calc(9px + env(safe-area-inset-top)) 12px 7px;
+  }
+  h1 {
+    font-size: 26px;
+    font-weight: 800;
+    text-align: center;
+    letter-spacing: .5px;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+  .head-pill {
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 0 auto;
+  }
+  .head-pill:active { background: #2b8de0; }
+  .head-pill:disabled { opacity: .6; cursor: default; }
+  #installBtn { justify-self: start; }
+  #authBtn { justify-self: end; max-width: 36vw; }
+  #authBtn.logged {
+    color: var(--green);
+    border-color: var(--ok-border);
+    background: var(--ok-bg);
+  }
+  #authBtn.logged::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .pill-short { display: none; }
+  @media (max-width: 359px) {
+    .pill-full { display: none; }
+    .pill-short { display: inline; }
+  }
+
+  /* ---------- 账号 Tab ---------- */
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    background: var(--chip-bg);
+    color: var(--muted);
+    font-size: 14px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .tab.add-tab {
+    background: var(--card);
+    border-style: dashed;
+    border-color: var(--dashed-border);
+    color: var(--accent);
+    font-weight: 700;
+    padding: 7px 13px;
+  }
+  /* 全局：按钮类元素长按时禁止呼出系统复制/选择菜单（兼容 iOS、鸿蒙 ArkWeb） */
+  button, .tab, .task-btn, .icon-btn, .head-pill, .cat-name, .cat-sub {
+    -webkit-touch-callout: none;
+  }
+
+  /* ---------- 跨设备剪贴板 ---------- */
+  .clip-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .clip-title { font-size: 15px; font-weight: 700; }
+  .clip-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .clip-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .clip-input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    border-radius: 12px;
+    padding: 9px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    outline: none;
+    font-family: inherit;
+  }
+  /* 放大弹窗里的大输入框仍为多行 textarea */
+  textarea.clip-input {
+    height: auto;
+    min-height: 240px;
+    resize: none;
+  }
+  /* 记录容器顶部提示 */
+  .clip-copy-hint {
+    font-size: 12.5px;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  /* 放大编辑弹窗：纵向弹性布局，输入框撑满标题与按钮之间的全部空间 */
+  .sheet.clip-edit {
+    display: flex;
+    flex-direction: column;
+    height: min(72vh, 620px);
+  }
+  .sheet.clip-edit h3 { flex: 0 0 auto; }
+  .sheet.clip-edit .clip-input { flex: 1 1 auto; min-height: min(240px, 38vh); }
+  .sheet.clip-edit .sheet-actions { flex: 0 0 auto; margin-top: 12px; }
+  .clip-input:focus { border-color: var(--accent); background: var(--card); }
+  .clip-expand {
+    flex: 0 0 auto;
+    width: 40px;
+    border: 1px solid var(--border);
+    background: var(--chip-bg);
+    color: var(--muted);
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background .15s, color .15s;
+  }
+  .clip-expand:active { background: var(--chip-press); }
+  .clip-expand svg { width: 18px; height: 18px; display: block; }
+  .clip-actions {
+    display: flex;
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .clip-actions button {
+    flex: 1;
+    border: none;
+    border-radius: 0;
+    padding: 10px 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    transition: opacity .15s;
+  }
+  .clip-actions button:active { opacity: .82; }
+  .clip-actions button + button { border-left: 1px solid rgba(125, 135, 145, .45); }
+  .clip-actions .clip-paste { background: var(--accent); }
+  .clip-actions .clip-save { background: var(--green); }
+  .clip-actions .clip-clear { background: var(--chip-bg); color: var(--text); }
+  .clip-list { margin-top: 12px; }
+  .clip-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 4px;
+    border-bottom: 1px solid var(--divider);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .clip-item:last-child { border-bottom: none; }
+  .clip-item:active { background: var(--press-bg); }
+  .clip-idx { font-size: 12px; color: var(--muted); min-width: 18px; flex: 0 0 auto; }
+  .clip-text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.3;
+    word-break: break-all;
+    white-space: pre-wrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .clip-time { font-size: 12px; color: var(--muted); flex: 0 0 auto; white-space: pre-line; line-height: 1.45; text-align: right; }
+  .clip-del {
+    flex: 0 0 auto;
+    border: none;
+    background: var(--chip-bg);
+    color: var(--muted);
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .clip-del:active { background: var(--danger-press); color: var(--danger); }
+  .clip-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 22px 0; }
+
+  /* ---------- 主体：分类容器 ---------- */
+  main { max-width: 720px; margin: 0 auto; padding: 14px 12px 0; }
+  .category {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .06);
+  }
+  .cat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .cat-name { font-size: 15px; font-weight: 700; }
+  .cat-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .icon-btn {
+    border: none;
+    background: var(--chip-bg);
+    color: var(--muted);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .icon-btn:active { background: var(--chip-press); }
+
+  /* ---------- 子分类分组 ---------- */
+  .subcat-header {
+    display: flex;
+    align-items: center;
+    margin: 14px 2px 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .subcat-header::before {
+    content: '';
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--accent);
+    margin-right: 7px;
+  }
+
+  /* ---------- 子分类管理弹窗 ---------- */
+  .subcat-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+  .subcat-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 8px;
+  }
+  .subcat-row input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--text);
+    padding: 4px 2px;
+  }
+  .subcat-row input:focus { outline: none; }
+  .subcat-row .mini-del {
+    border: none;
+    background: transparent;
+    color: var(--danger);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+    flex: 0 0 auto;
+  }
+  .subcat-row .grip {
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: grab;
+    touch-action: none;
+    flex: 0 0 auto;
+    padding: 4px 2px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .subcat-row.dragging {
+    opacity: .8;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+  }
+  .subcat-add {
+    border: 1px dashed var(--border);
+    background: var(--card);
+    color: var(--accent);
+    border-radius: 10px;
+    padding: 9px 0;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .subcat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 14px 0; }
+  .subcat-tip { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
+
+  /* ---------- 任务按钮拖动（手机桌面风格） ---------- */
+  .task-btn.drag-origin {
+    visibility: hidden;
+  }
+  .drag-clone {
+    position: fixed;
+    z-index: 999;
+    pointer-events: none;
+    margin: 0;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .28);
+    opacity: .96;
+    transform: scale(1.06);
+    transition: none;
+  }
+  .task-grid.empty {
+    min-height: 56px;
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+  }
+
+  /* ---------- 任务按钮（每行 3 个） ---------- */
+  .task-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px 8px;
+  }
+  .task-btn {
+    position: relative;
+    border: none;
+    border-radius: 10px;
+    min-height: 40px;
+    padding: 4px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #fff;
+    background: var(--gray);
+    transition: transform .1s, background .2s;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: visible;
+    word-break: break-all;
+  }
+  .task-btn:active { transform: scale(.96); }
+  .task-btn.done { background: var(--green); }
+  .task-btn.unset {
+    background: var(--unset-bg);
+    color: var(--unset-text);
+    border: 1.5px dashed var(--unset-border);
+  }
+  .task-btn .t-name {
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .task-btn .t-sub { font-size: 10px; opacity: .85; font-weight: 400; }
+  /* 提醒铃铛（左上）与次数角标（右上）分别跨出按钮上边缘，不占按钮内部空间、互不遮挡 */
+  .task-btn .badge {
+    position: absolute;
+    top: -8px;
+    right: -5px;
+    min-width: 16px;
+    height: 15px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .task-btn .t-bell {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bell-bg);
+    border-radius: 999px;
+    color: var(--bell-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .task-btn .t-bell svg { width: 11px; height: 11px; display: block; }
+  /* 铃铛在按钮内左上角，名称/副文案左侧留白避让 */
+  .task-btn.has-bell .t-name,
+  .task-btn.has-bell .t-sub { padding-left: 13px; }
+  /* ---------- 应用内提醒弹窗 ---------- */
+  .remind-bell {
+    width: 76px;
+    height: 76px;
+    margin: 4px auto 10px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffb020, #ff8a00);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(255, 138, 0, .35);
+    animation: remindPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes remindPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 6px 18px rgba(255, 138, 0, .35); }
+    50% { transform: scale(1.08); box-shadow: 0 10px 26px rgba(255, 138, 0, .5); }
+  }
+  .remind-pop-title { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+  .remind-pop-task {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 6px 0 2px;
+    word-break: break-all;
+  }
+  .remind-pop-meta { text-align: center; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .remind-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 12px 0 4px;
+  }
+  .remind-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    height: 26px;
+    padding: 0 4px 0 8px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11.5px;
+  }
+  .remind-item .r-label {
+    flex: 1;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .remind-item .r-del {
+    border: none;
+    background: rgba(255, 255, 255, .28);
+    color: #fff;
+    border-radius: 6px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .seg {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 10px;
+  }
+  .seg button {
+    flex: 1;
+    padding: 8px 2px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    color: var(--text);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .week-row { display: flex; gap: 5px; margin: 2px 0 10px; }
+  .week-row button {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .week-row button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .add-task-btn {
+    background: var(--card) !important;
+    color: var(--dashed-text) !important;
+    border: 1.5px dashed var(--dashed-border);
+    font-size: 12px;
+    font-weight: 400 !important;
+    white-space: nowrap;
+  }
+  .add-cat-btn {
+    width: 100%;
+    border: 1.5px dashed var(--dashed-border);
+    background: transparent;
+    color: var(--dashed-text);
+    border-radius: var(--radius);
+    padding: 13px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-bottom: 14px;
+  }
+  .add-cat-btn:active { background: var(--dashed-hover); }
+
+  /* ---------- 弹窗 ---------- */
+  .mask {
+    position: fixed;
+    inset: 0;
+    background: var(--mask-bg);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn .15s ease;
+  }
+  @media (min-width: 480px) { .mask { align-items: center; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    background: var(--card);
+    border-radius: 18px 18px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+    animation: slideUp .2s ease;
+  }
+  @media (min-width: 480px) { .sheet { border-radius: 18px; margin: 0 16px; } }
+  @keyframes slideUp { from { transform: translateY(30px); opacity: .6; } to { transform: none; opacity: 1; } }
+  .sheet h3 { font-size: 16px; margin-bottom: 14px; text-align: center; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); background: var(--card); }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .btn {
+    flex: 1;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn:active { opacity: .85; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: var(--chip-bg); color: var(--text); }
+  .btn-danger { background: var(--danger-bg); color: var(--danger); }
+  .menu-list { display: flex; flex-direction: column; }
+  .menu-item {
+    border: none;
+    background: var(--card);
+    text-align: left;
+    padding: 14px 6px;
+    font-size: 15px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    border-radius: 8px;
+    color: var(--text);
+  }
+  .menu-item:last-child { border-bottom: none; }
+  .menu-item:active { background: var(--press-bg); }
+  .menu-item.danger { color: var(--danger); }
+  .counter-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin: 10px 0 4px;
+  }
+  .counter-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: var(--chip-bg);
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--text);
+    flex: 0 0 auto;
+  }
+  .counter-btn:active { background: var(--chip-press); }
+  input.counter-val {
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    border-radius: 12px;
+    padding: 10px;
+    font-size: 24px;
+    font-weight: 700;
+    width: 92px;
+    text-align: center;
+    color: var(--text);
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  input.counter-val::-webkit-outer-spin-button,
+  input.counter-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 10px; line-height: 1.7; }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 90px;
+    transform: translateX(-50%);
+    background: var(--toast-bg);
+    color: var(--toast-text);
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    z-index: 200;
+    animation: fadeIn .15s ease;
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: 86vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* ---------- 深浅色过渡 ---------- */
+  body, header, .category, .sheet, .tab, .clip-item, .menu-item, .subcat-row,
+  .field input, .field select, .seg button, .week-row button, .counter-btn,
+  .icon-btn, .clip-del, .btn, .head-pill, .add-task-btn, .add-cat-btn, .subcat-add,
+  input.counter-val, .clip-empty, .subcat-empty {
+    transition: background-color .25s ease, color .25s ease, border-color .25s ease;
+  }
+
+
+  /* ================= APK 版：主题色（6 套预设） ================= */
+  :root[data-accent="green"]  { --accent: #40c057; --accent-deep: #2b8a3e; }
+  :root[data-accent="violet"] { --accent: #9775fa; --accent-deep: #6741d9; }
+  :root[data-accent="orange"] { --accent: #ff922b; --accent-deep: #e8590c; }
+  :root[data-accent="red"]    { --accent: #fa5252; --accent-deep: #c92a2a; }
+  :root[data-accent="teal"]   { --accent: #38d9a9; --accent-deep: #0ca678; }
+  :root[data-theme="dark"][data-accent="green"]  { --accent: #51cf66; --accent-deep: #2f9e44; }
+  :root[data-theme="dark"][data-accent="violet"] { --accent: #b197fc; --accent-deep: #7048e8; }
+  :root[data-theme="dark"][data-accent="orange"] { --accent: #ffa94d; --accent-deep: #e8590c; }
+  :root[data-theme="dark"][data-accent="red"]    { --accent: #ff8787; --accent-deep: #c92a2a; }
+  :root[data-theme="dark"][data-accent="teal"]   { --accent: #63e6be; --accent-deep: #0ca678; }
+
+  /* ================= APK 版：底部导航 ================= */
+  .bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;
+    display: flex; background: var(--header-bg);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bnav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 0 6px; border: none; background: none; cursor: pointer;
+    color: var(--muted); font-size: 11px; font-family: inherit;
+  }
+  .bnav-item svg { width: 22px; height: 22px; display: block; }
+  .bnav-item.active { color: var(--accent); font-weight: 600; }
+
+  /* ================= APK 版：我的 / 设置行 ================= */
+  .me-group-title { font-size: 12.5px; color: var(--muted); margin: 2px 2px 10px; }
+  .me-account { padding-top: 16px; }
+  .me-acc-row { display: flex; align-items: center; gap: 14px; }
+  .me-avatar {
+    width: 52px; height: 52px; border-radius: 50%; flex: 0 0 auto;
+    background: var(--accent); color: #fff; font-size: 22px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .me-acc-info { flex: 1; min-width: 0; }
+  .me-acc-name { font-size: 17px; font-weight: 700; }
+  .me-acc-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .me-acc-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .me-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 13px 2px; border-bottom: 1px solid var(--divider);
+  }
+  .me-row:last-child { border-bottom: none; }
+  .me-row-label { font-size: 15px; }
+  .me-row-desc { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 400; }
+  .me-row-tip { padding: 0 2px 10px; }
+  .me-row-value { font-size: 13px; color: var(--muted); }
+  .me-seg { display: flex; background: var(--field-bg); border-radius: 10px; padding: 3px; gap: 2px; }
+  .me-seg-btn {
+    border: none; background: none; padding: 6px 12px; border-radius: 8px;
+    font-size: 13px; color: var(--muted); cursor: pointer; font-family: inherit;
+  }
+  .me-seg-btn.active { background: var(--card); color: var(--accent); font-weight: 600; box-shadow: 0 1px 4px rgba(16, 24, 40, .12); }
+  .me-swatches { display: flex; gap: 10px; }
+  .me-swatch {
+    width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;
+    cursor: pointer; padding: 0;
+  }
+  .me-swatch.active { border-color: var(--text); }
+  .me-swatch.sw-blue   { background: #339af0; }
+  .me-swatch.sw-green  { background: #40c057; }
+  .me-swatch.sw-violet { background: #9775fa; }
+  .me-swatch.sw-orange { background: #ff922b; }
+  .me-swatch.sw-red    { background: #fa5252; }
+  .me-swatch.sw-teal   { background: #38d9a9; }
+  .me-switch {
+    width: 48px; height: 28px; border-radius: 14px; border: none; cursor: pointer;
+    position: relative; flex: 0 0 auto; transition: background-color .2s; padding: 0;
+  }
+  .me-switch.on { background: var(--accent); }
+  .me-switch.off { background: var(--chip-bg); }
+  .me-switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff; transition: transform .2s;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .3);
+  }
+  .me-switch.on::after { transform: translateX(20px); }
+  .me-switch:disabled { opacity: .5; cursor: default; }
+
+  /* ================= APK 版：任务页管理栏 ================= */
+  .app-manage-bar { display: flex; justify-content: flex-end; margin: 2px 0 10px; }
+  .app-manage-btn {
+    display: inline-flex; align-items: center; gap: 5px; border: none; cursor: pointer;
+    background: var(--chip-bg); color: var(--text); border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; font-weight: 600; font-family: inherit;
+  }
+  .app-manage-btn:active { background: var(--chip-press); }
+  .app-manage-btn svg { width: 15px; height: 15px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="head-row">
+    <h1>任务管理</h1>
+  </div>
+  <nav class="tab-bar" id="tabBar"></nav>
+</header>
+
+<main id="main"></main>
+<div id="modalRoot"></div>
+<nav class="bottom-nav" id="bottomNav"></nav>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 常量与状态 ================= */
+  var STORAGE_KEY = 'taskRecordTool.v1';
+  var AUTH_KEY = 'taskRecordTool.auth.v1';
+  var THEME_KEY = 'taskRecordTool.theme';  /* 深浅色偏好：light / dark，缺省跟随系统 */
+  /* 云同步服务地址（部署 Cloudflare Worker 后填入，为空时仅本地模式） */
+  var API_BASE = 'https://task-record-api.pages.dev';
+  /* App（APK）下载链接：安卓 / 鸿蒙设备装上它，提醒由系统闹钟承载，关掉页面也能响 */
+  var APK_DOWNLOAD_URL = 'https://doctorstrange1122.github.io/task-record-tool/task-record-tool.apk';
+  /* 是否运行在 App 内（APK 的 WebView 会带 app=1 参数或 UA 标记） */
+  var IN_APP = /[?&]app=1/.test(location.search) ||
+               /TaskReminderApp/.test(navigator.userAgent || '');
+  var DAY = 86400000;
+  var LONG_PRESS_MS = 500;
+  var MAX_COUNT = 9999;
+  /* 剪贴板记录过期时间与分页大小：必须在 loadData() 之前声明，
+    否则 loadData 内过滤时取到 undefined，导致每次打开页面清空全部记录 */
+  var CLIP_EXPIRE_MS = 7 * 24 * 3600 * 1000; /* 记录保存 7 天 */
+  var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
+  /* APK 专用文档：App 化交互（底部导航、底部动作菜单、原生桥） */
+  var APP_MODE = true;
+  var ACCENT_KEY = 'taskRecordTool.accent';
+  var ACCENTS = ['blue', 'green', 'violet', 'orange', 'red', 'teal'];
+  var ACCENT_NAMES = { blue: '海蓝', green: '青绿', violet: '藤紫', orange: '暖橙', red: '朱红', teal: '蓝绿' };
+  var meView = false;                      /* 当前是否显示「我的」页 */
+
+  var data = loadData();
+  var auth = loadAuth();
+  var suppressSync = false;
+  var syncTimer = null;
+
+  /* ================= 数据层 ================= */
+  function genId() {
+    return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newTask() {
+    /* 默认统计周期为一天，0 点自动清零 */
+    return { id: genId(), configured: false, name: '', cycleDays: 1, cycleStart: 0, count: 0, reminders: [], subId: null };
+  }
+
+  function defaultData() {
+    var acc = { id: genId(), name: '账号1', categories: [] };
+    var cat = { id: genId(), name: '默认分类', tasks: [], subcats: [] };
+    for (var i = 0; i < 3; i++) cat.tasks.push(newTask());
+    acc.categories.push(cat);
+    return { activeAccountId: acc.id, accounts: [acc], clipboards: [] };
+  }
+
+  function loadData() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && Array.isArray(d.accounts) && d.accounts.length &&
+            Array.isArray(d.accounts[0].categories)) {
+          migrateReminders(d);
+          if (!Array.isArray(d.clipboards)) d.clipboards = [];
+          else d.clipboards = d.clipboards.filter(function (c) {
+            return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
+          });
+          return d;
+        }
+      }
+    } catch (e) { /* 数据损坏时回退默认数据 */ }
+    return defaultData();
+  }
+
+  /* 旧版单值 remind 字段迁移为 reminders 数组（兼容历史数据） */
+  function migrateReminders(d) {
+    (d.accounts || []).forEach(function (acc) {
+      (acc.categories || []).forEach(function (cat) {
+        if (!Array.isArray(cat.subcats)) cat.subcats = [];
+        (cat.tasks || []).forEach(function (t) {
+          if (t.remind && !t.reminders) {
+            t.reminders = [{ id: 'r' + (t.id || '') + '-' + Date.now().toString(36), time: t.remind, repeat: 'daily', enabled: true }];
+          }
+          if (t.remind) delete t.remind;
+          if (!Array.isArray(t.reminders)) t.reminders = [];
+          if (t.subId === undefined) t.subId = null;
+        });
+      });
+    });
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+    if (!suppressSync) scheduleSync();
+  }
+
+  /* ================= 跨设备剪贴板 ================= */
+  var clipboardView = false;             /* 当前是否显示剪贴板面板 */
+  var clipDraft = '';                     /* 剪贴板输入框草稿：切走 tab 再回来不丢失 */
+  /* 输入框为单行 input，仅显示预览；完整内容（含换行）始终存在 clipDraft */
+  function clipSingleLine(t) {
+    return String(t || '').replace(/\r\n|\r|\n/g, ' ');
+  }
+  var TAB_KEY = 'taskRecordTool.tab';     /* 记住上次停留的 tab */
+
+  /* 保存当前激活 tab（剪贴板 / 某个账号）到本地 */
+  function saveActiveTab() {
+    try {
+      localStorage.setItem(TAB_KEY, JSON.stringify({
+        clip: clipboardView,
+        me: meView,
+        accId: (clipboardView || meView) ? null : data.activeAccountId
+      }));
+    } catch (e) {}
+  }
+
+  /* 启动时恢复上次停留的 tab；若记录的账号已不存在则回退到首个账号 */
+  function restoreActiveTab() {
+    try {
+      var raw = localStorage.getItem(TAB_KEY);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (s.clip) {
+        clipboardView = true;
+      } else if (s.me) {
+        meView = true;
+      } else if (s.accId && data.accounts.some(function (a) { return a.id === s.accId; })) {
+        data.activeAccountId = s.accId;
+      }
+    } catch (e) {}
+  }
+
+  function clipFresh(c) {
+    return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
+  }
+
+  /* 清理过期记录，返回是否有删除 */
+  function pruneClipboards() {
+    if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
+    var before = data.clipboards.length;
+    data.clipboards = data.clipboards.filter(clipFresh);
+    return data.clipboards.length !== before;
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function hhmm(ts) {
+    var d = new Date(ts);
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /* 剪贴板记录时间：第一行 mm-dd，第二行 hh:mm */
+  function clipTimeText(at) {
+    var d = new Date(at);
+    return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + '\n' +
+           pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  function copyText(text, okMsg) {
+    if (Native.copy(text)) { toast(okMsg || '已复制'); return; }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); toast(okMsg || '已复制'); }
+      catch (e) { toast('复制失败，请长按内容手动复制'); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast(okMsg || '已复制');
+      }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function readSystemClipboard() {
+    var nt = Native.readClipboard();
+    if (nt !== null) return Promise.resolve(nt);
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      return navigator.clipboard.readText();
+    }
+    return Promise.reject(new Error('clipboard api unavailable'));
+  }
+
+  /* 「粘贴」按钮：尝试把系统剪贴板内容读入输入框；
+     读不到（浏览器限制 / 权限 / 非文本）时聚焦输入框，提示长按手动粘贴 */
+  function onClipPaste() {
+    var ta = document.getElementById('clipInput');
+    readSystemClipboard().then(function (t) {
+      t = (t || '').trim();
+      clipDraft = t;
+      if (ta) { ta.value = clipSingleLine(t); ta.focus(); }
+      if (t) { toast('已粘贴到输入框'); }
+      else { toast('未能读取剪贴板，请长按输入框手动粘贴'); }
+    }).catch(function () {
+      if (ta) ta.focus();
+      toast('未能读取剪贴板，请长按输入框手动粘贴');
+    });
+  }
+
+  /* 「保存」按钮：把输入框内容存入剪贴板记录 */
+  function onClipSave() {
+    var ta = document.getElementById('clipInput');
+    var v = (clipDraft || '').trim();
+    if (!v) { toast('请先输入或粘贴内容'); return; }
+    clipDraft = '';
+    if (ta) { ta.value = ''; ta.blur(); }
+    saveClipRecord(v);
+  }
+
+  /* 「清空」按钮：清空输入框 */
+  function onClipClear() {
+    var ta = document.getElementById('clipInput');
+    clipDraft = '';
+    if (ta) { ta.value = ''; ta.focus(); }
+  }
+
+  /* 放大输入框：弹出大编辑弹窗（不在原界面放大），完成后写回小输入框 */
+  function openClipExpandSheet() {
+    openModal(function (sheet, close) {
+      sheet.classList.add('clip-edit');
+      var h = document.createElement('h3');
+      h.textContent = '编辑内容';
+      sheet.appendChild(h);
+      var small = document.getElementById('clipInput');
+      var ta = document.createElement('textarea');
+      ta.className = 'clip-input';
+      ta.rows = 8;
+      ta.placeholder = '粘贴或输入要保存的内容';
+      ta.setAttribute('aria-label', '剪贴板内容');
+      ta.value = clipDraft;
+      sheet.appendChild(ta);
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-ghost';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', close);
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '完成';
+      ok.addEventListener('click', function () {
+        clipDraft = ta.value;
+        if (small) { small.value = clipSingleLine(ta.value); }
+        close();
+      });
+      actions.appendChild(cancel);
+      actions.appendChild(ok);
+      sheet.appendChild(actions);
+      setTimeout(function () { try { ta.focus(); } catch (e) {} }, 120);
+    });
+  }
+
+  function saveClipRecord(text) {
+    pruneClipboards();
+    data.clipboards.unshift({ id: genId(), text: text, at: Date.now() });
+    save();
+    renderClipboardList();
+    toast('已保存到剪贴板记录');
+  }
+
+  function deleteClipRecord(id) {
+    data.clipboards = data.clipboards.filter(function (c) { return c.id !== id; });
+    save();
+    renderClipboardList();
+  }
+
+  function renderClipboardPanel() {
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+    var panel = document.createElement('section');
+    panel.className = 'category';
+
+    var head = document.createElement('div');
+    head.className = 'clip-head';
+    var title = document.createElement('div');
+    var t = document.createElement('span');
+    t.className = 'clip-title';
+    t.textContent = '跨设备剪贴板';
+    var sub = document.createElement('span');
+    sub.className = 'clip-sub';
+    sub.textContent = '保存 7 天 · 每页最多 15 条';
+    title.appendChild(t);
+    title.appendChild(sub);
+    head.appendChild(title);
+    panel.appendChild(head);
+
+    /* 输入框（单行高）+ 右侧放大按钮 */
+    var inputRow = document.createElement('div');
+    inputRow.className = 'clip-input-row';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'clipInput';
+    input.className = 'clip-input';
+    input.placeholder = '粘贴或输入要保存的内容';
+    input.value = clipSingleLine(clipDraft);
+    input.addEventListener('input', function () { clipDraft = input.value; });
+    inputRow.appendChild(input);
+    var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'clip-expand';
+    expandBtn.title = '放大输入框';
+    expandBtn.setAttribute('aria-label', '放大输入框');
+    expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/>' +
+      '<polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/>' +
+      '<line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    expandBtn.addEventListener('click', openClipExpandSheet);
+    inputRow.appendChild(expandBtn);
+    panel.appendChild(inputRow);
+
+    /* 三个按钮：同一容器，中间分隔线 */
+    var actions = document.createElement('div');
+    actions.className = 'clip-actions';
+    var pasteBtn = document.createElement('button');
+    pasteBtn.type = 'button';
+    pasteBtn.className = 'clip-paste';
+    pasteBtn.textContent = '粘贴';
+    pasteBtn.addEventListener('click', onClipPaste);
+    actions.appendChild(pasteBtn);
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'clip-save';
+    saveBtn.textContent = '保存';
+    saveBtn.addEventListener('click', onClipSave);
+    actions.appendChild(saveBtn);
+    var clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'clip-clear';
+    clearBtn.textContent = '清空';
+    clearBtn.addEventListener('click', onClipClear);
+    actions.appendChild(clearBtn);
+    panel.appendChild(actions);
+
+    main.appendChild(panel);
+
+    /* 容器二：保存的记录（独立卡片） */
+    var listPanel = document.createElement('section');
+    listPanel.className = 'category';
+    var copyHint = document.createElement('div');
+    copyHint.className = 'clip-copy-hint';
+    copyHint.textContent = '👇点击记录即可复制';
+    listPanel.appendChild(copyHint);
+    var list = document.createElement('div');
+    list.className = 'clip-list';
+    list.id = 'clipList';
+    listPanel.appendChild(list);
+    main.appendChild(listPanel);
+
+    renderClipboardList();
+  }
+
+  function renderClipboardList() {
+    var list = document.getElementById('clipList');
+    if (!list) return;
+    list.innerHTML = '';
+    pruneClipboards();
+    var items = data.clipboards.slice().sort(function (a, b) { return b.at - a.at; })
+      .slice(0, CLIP_PAGE_SIZE);
+    if (!items.length) {
+      var empty = document.createElement('div');
+      empty.className = 'clip-empty';
+      empty.textContent = '暂无剪贴板记录';
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach(function (c, i) {
+      var row = document.createElement('div');
+      row.className = 'clip-item';
+      var idx = document.createElement('span');
+      idx.className = 'clip-idx';
+      idx.textContent = (i + 1) + '.';
+      var txt = document.createElement('span');
+      txt.className = 'clip-text';
+      txt.textContent = c.text;
+      var time = document.createElement('span');
+      time.className = 'clip-time';
+      time.textContent = clipTimeText(c.at);
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'clip-del';
+      del.textContent = '✕';
+      del.title = '删除该条记录';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        deleteClipRecord(c.id);
+      });
+      row.appendChild(idx);
+      row.appendChild(txt);
+      row.appendChild(time);
+      row.appendChild(del);
+      row.addEventListener('click', function () {
+        copyText(c.text, '已复制该条记录');
+      });
+      list.appendChild(row);
+    });
+  }
+
+  function activeAccount() {
+    var acc = null;
+    data.accounts.forEach(function (a) { if (a.id === data.activeAccountId) acc = a; });
+    if (!acc) { acc = data.accounts[0]; data.activeAccountId = acc.id; }
+    return acc;
+  }
+
+  function findTask(taskId) {
+    var res = null;
+    data.accounts.some(function (acc) {
+      return acc.categories.some(function (cat) {
+        return cat.tasks.some(function (t) {
+          if (t.id === taskId) { res = { task: t, cat: cat, account: acc }; return true; }
+          return false;
+        });
+      });
+    });
+    return res;
+  }
+
+  function removeTask(task) {
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        var i = cat.tasks.indexOf(task);
+        if (i > -1) cat.tasks.splice(i, 1);
+      });
+    });
+    save();
+    render();
+    syncRemindersToNative(); /* 任务删除：取消其系统提醒 */
+  }
+
+  /* ================= 周期统计逻辑（0 点清零） ================= */
+  function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+  /* 清零时刻：周期开始那天的 0 点 + N 天（1 天周期即每天 0 点清零，与点击时间无关） */
+  function resetAt(task) { return startOfDay(task.cycleStart) + Math.max(1, task.cycleDays || 1) * DAY; }
+
+  function isCycleExpired(task) {
+    return task.configured && task.cycleStart > 0 && Date.now() >= resetAt(task);
+  }
+
+  function remainLabel(task) {
+    if (!task.configured) return '';
+    var n = Math.max(1, task.cycleDays || 1);
+    return n === 1 ? '每日刷新' : '每 ' + n + ' 日刷新';
+  }
+
+  function isDone(task) { return task.configured && task.count > 0; }
+  /* 「未分组」保留条目 id：作为真实条目存于 cat.subcats，可改名/排序，其任务 subId 为 null */
+  var UNG_ID = '__ungrouped__';
+
+  /* 周期到期自动清零：次数归零、按钮恢复未完成状态 */
+  function checkCycles() {
+    var changed = false;
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        cat.tasks.forEach(function (t) {
+          if (isCycleExpired(t)) {
+            t.cycleStart = 0;
+            t.count = 0;
+            changed = true;
+          }
+        });
+      });
+    });
+    if (changed) { save(); render(); syncRemindersToNative(); }
+  }
+
+  /* ================= 云同步（Cloudflare Worker） ================= */
+  function apiConfigured() { return /^https?:\/\//.test(API_BASE); }
+
+  function apiFetch(path, opts, token) {
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    var t = token || (auth && auth.token);
+    if (t) headers['Authorization'] = 'Bearer ' + t;
+    return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+  }
+
+  function loadAuth() {
+    try {
+      var a = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (a && a.token && a.username) {
+        if (!a.nickname) a.nickname = a.username; /* 兼容早期无昵称的登录态 */
+        return a;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function saveAuth() {
+    try {
+      if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      else localStorage.removeItem(AUTH_KEY);
+    } catch (e) {}
+  }
+
+  function updateAuthUI() {
+    var btn = document.getElementById('authBtn');
+    if (!btn) { if (meView) render(); return; }
+    if (auth) {
+      btn.textContent = auth.nickname || auth.username;
+      btn.classList.add('logged');
+      btn.title = '已登录：' + (auth.nickname || auth.username) + '（账号 ' + auth.username + '，点击管理）';
+    } else {
+      btn.textContent = '登录';
+      btn.classList.remove('logged');
+      btn.title = '登录 / 注册以云同步任务数据';
+    }
+  }
+
+  function clearAuth(msg) {
+    auth = null;
+    saveAuth();
+    updateAuthUI();
+    render();
+    if (msg) toast(msg);
+  }
+
+  /* 本地有变更时防抖上传 */
+  function scheduleSync(delay) {
+    if (!auth || !apiConfigured()) return;
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () {
+      syncTimer = null;
+      pushData(false);
+    }, delay || 800);
+  }
+
+  function pushData(quiet) {
+    if (!auth || !apiConfigured()) return Promise.resolve();
+    return apiFetch('/api/data', {
+      method: 'PUT',
+      body: JSON.stringify({ data: data, base: auth.lastSync || null })
+    }).then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (result) {
+        if (res.ok) {
+          auth.lastSync = result.updated_at;
+          saveAuth();
+        } else if (res.status === 409) {
+          /* 其他设备有新写入：拉取最新数据 */
+          return pullData(true).then(function () {
+            if (!quiet) toast('检测到其他设备的更新，已加载最新数据');
+          });
+        }
+      });
+    }).catch(function () { /* 离线时静默失败，下次变更重试 */ });
+  }
+
+  function pullData(quiet) {
+    if (!auth || !apiConfigured()) return Promise.resolve();
+    return apiFetch('/api/data').then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (result) {
+        if (res.ok && result.data) {
+          var serverAt = result.updated_at || 0;
+          if (!auth.lastSync || serverAt > auth.lastSync) {
+            suppressSync = true;
+            data = result.data;
+            pruneClipboards();
+            auth.lastSync = serverAt;
+            saveAuth();
+            save();
+            render();
+            suppressSync = false;
+            syncRemindersToNative(); /* 云端数据可能改了提醒：重排系统闹钟 */
+            if (!quiet) toast('已同步云端最新数据');
+          }
+        }
+      });
+    }).catch(function () { /* 离线时静默失败 */ });
+  }
+
+  function doAuth(mode, username, password, nickname) {
+    return apiFetch(mode === 'login' ? '/api/login' : '/api/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: username, password: password, nickname: nickname || '' })
+    }).then(function (res) {
+      return res.json().then(function (result) {
+        if (!res.ok) throw new Error(result.error || '操作失败，请重试');
+        auth = { token: result.token, username: result.username, nickname: result.nickname || result.username, lastSync: null };
+        saveAuth();
+        updateAuthUI();
+        render();
+        if (mode === 'register') {
+          /* 新注册用户：把本机已设置的内容同步至账号 */
+          return pushData(true).then(function () {
+            return '注册成功，本机数据已同步到账号';
+          });
+        }
+        if (result.data) {
+          /* 已有数据：采用云端版本 */
+          suppressSync = true;
+          data = result.data;
+          auth.lastSync = result.updated_at || null;
+          saveAuth();
+          save();
+          render();
+          suppressSync = false;
+          syncRemindersToNative();
+          return '登录成功，已从云端恢复数据';
+        }
+        return pushData(true).then(function () {
+          return '登录成功，云端为空，已上传本机数据';
+        });
+      });
+    }).catch(function (e) {
+      if (e instanceof TypeError) throw new Error('网络异常，无法连接云同步服务');
+      throw e;
+    });
+  }
+
+  function logout() {
+    var token = auth && auth.token;
+    auth = null;
+    saveAuth();
+    updateAuthUI();
+    render();
+    toast('已退出登录（本机数据仍保留）');
+    if (token && apiConfigured()) {
+      apiFetch('/api/logout', { method: 'POST', body: '{}' }, token).catch(function () {});
+    }
+  }
+
+  /* ================= 渲染 ================= */
+  function render() {
+    renderTabs();
+    renderMain();
+    renderBottomNav();
+    var bar = document.querySelector('header .tab-bar');
+    if (bar) bar.style.display = (clipboardView || meView) ? 'none' : '';
+  }
+
+  function renderTabs() {
+    var bar = document.getElementById('tabBar');
+    bar.innerHTML = '';
+    var activeTab = null;
+    /* App 版：剪贴板 / 我的 由底部导航切换，顶部只保留账号 tab */
+    if (clipboardView || meView) return;
+    data.accounts.forEach(function (acc) {
+      var tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'tab' + (!clipboardView && acc.id === data.activeAccountId ? ' active' : '');
+      tab.textContent = acc.name;
+      tab.title = acc.name + '（长按可重命名/删除）';
+      tab.addEventListener('click', function () {
+      if (suppressClick) { suppressClick = false; return; }
+      clipboardView = false;
+      meView = false;
+      data.activeAccountId = acc.id;
+      saveActiveTab();
+      save();
+      render();
+      });
+      attachLongPress(tab, function () { openAccountMenu(acc); });
+      if (!clipboardView && acc.id === data.activeAccountId) activeTab = tab;
+      bar.appendChild(tab);
+    });
+    var add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'tab add-tab';
+    add.textContent = '+';
+    add.title = '添加账号';
+    add.addEventListener('click', function () {
+      if (suppressClick) { suppressClick = false; return; }
+      openAddAccountDialog();
+    });
+    bar.appendChild(add);
+    if (activeTab && activeTab.scrollIntoView) {
+      activeTab.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+  }
+
+  function renderMain() {
+    if (meView) { renderMePage(); return; }
+    if (clipboardView) { renderClipboardPanel(); return; }
+    var acc = activeAccount();
+    /* 清理空名称子分类，并把指向已删除子分类的任务回退到未分组；
+       始终保留「未分组」条目（可改名/排序），即使还没有真实子分类也在管理界面可见 */
+    acc.categories.forEach(function (cat) {
+      if (!Array.isArray(cat.subcats)) cat.subcats = [];
+      var ids = {};
+      cat.subcats = cat.subcats.filter(function (s) {
+        s.name = (s.name || '').trim();
+        if (!s.name && s.id !== UNG_ID) return false;
+        ids[s.id] = true;
+        return true;
+      });
+      (cat.tasks || []).forEach(function (t) {
+        if (t.subId === UNG_ID) t.subId = null;
+        if (t.subId && !ids[t.subId]) t.subId = null;
+      });
+      var hasUng = cat.subcats.some(function (s) { return s.id === UNG_ID; });
+      if (!hasUng) {
+        cat.subcats.push({ id: UNG_ID, name: '未分组' });
+      } else {
+        var ungEntry = cat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
+        if (!ungEntry.name) ungEntry.name = '未分组';
+      }
+    });
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+
+    /* 任务页右上角「管理」入口：账号级操作聚合 */
+    var manageBar = document.createElement('div');
+    manageBar.className = 'app-manage-bar';
+    var manageBtn = document.createElement('button');
+    manageBtn.type = 'button';
+    manageBtn.className = 'app-manage-btn';
+    manageBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/>' +
+      '<line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/>' +
+      '<line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/>' +
+      '<line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/>' +
+      '<line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>管理';
+    manageBtn.addEventListener('click', openAppManageMenu);
+    manageBar.appendChild(manageBtn);
+    main.appendChild(manageBar);
+
+    acc.categories.forEach(function (cat) {
+      var section = document.createElement('section');
+      section.className = 'category';
+
+      var header = document.createElement('div');
+      header.className = 'cat-header';
+      var nameWrap = document.createElement('div');
+      var name = document.createElement('span');
+      name.className = 'cat-name';
+      name.textContent = cat.name;
+      var sub = document.createElement('span');
+      sub.className = 'cat-sub';
+      var doneCount = cat.tasks.filter(isDone).length;
+      sub.textContent = cat.tasks.length + ' 个任务 · ' + doneCount + ' 个已完成';
+      nameWrap.appendChild(name);
+      nameWrap.appendChild(sub);
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'icon-btn';
+      more.textContent = '⋯';
+      more.title = '分类管理';
+      more.addEventListener('click', function () { openCategoryMenu(cat); });
+      header.appendChild(nameWrap);
+      header.appendChild(more);
+      section.appendChild(header);
+
+      /* 按子分类分组渲染（含「未分组」保留条目，按管理界面排序）；无子分类时直接平铺 */
+      if (cat.subcats.length === 0) {
+        section.appendChild(buildTaskGrid(cat, cat.tasks, true, ''));
+      } else {
+        /* 只有一个「未分组」且未改名时，主界面隐藏该分组名（管理界面仍可看到并改名） */
+        var onlyDefaultUng = cat.subcats.length === 1 &&
+          cat.subcats[0].id === UNG_ID && (cat.subcats[0].name || '未分组') === '未分组';
+        cat.subcats.forEach(function (sc) {
+          var isUng = sc.id === UNG_ID;
+          var scTasks = isUng
+            ? cat.tasks.filter(function (t) { return !t.subId; })
+            : cat.tasks.filter(function (t) { return t.subId === sc.id; });
+          if (!(isUng && onlyDefaultUng)) {
+            var sh = document.createElement('div');
+            sh.className = 'subcat-header';
+            sh.textContent = sc.name;
+            section.appendChild(sh);
+          }
+          section.appendChild(buildTaskGrid(cat, scTasks, isUng, sc.id));
+        });
+      }
+
+      main.appendChild(section);
+    });
+
+    var addCat = document.createElement('button');
+    addCat.type = 'button';
+    addCat.className = 'add-cat-btn';
+    addCat.textContent = '+ 添加分类';
+    addCat.addEventListener('click', openAddCategoryDialog);
+    main.appendChild(addCat);
+
+    var hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = auth
+      ? '点击按钮记录一次完成；长按按钮可管理。数据已开启云同步（' + (auth.nickname || auth.username) + '）。'
+      : '点击按钮记录一次完成；长按按钮可管理。数据仅保存在本机，登录后可多设备云同步。';
+    main.appendChild(hint);
+  }
+
+  function buildTaskButton(task, cat) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'task-btn';
+    btn.dataset.taskId = task.id;
+
+    if (!task.configured) {
+      btn.classList.add('unset');
+      var plus = document.createElement('span');
+      plus.className = 't-name';
+      plus.textContent = '+';
+      var tip = document.createElement('span');
+      tip.className = 't-sub';
+      tip.textContent = '设置任务';
+      btn.appendChild(plus);
+      btn.appendChild(tip);
+    } else {
+      if (isDone(task)) btn.classList.add('done');
+      var name = document.createElement('span');
+      name.className = 't-name';
+      name.textContent = task.name;
+      var sub = document.createElement('span');
+      sub.className = 't-sub';
+      sub.textContent = remainLabel(task);
+      btn.appendChild(name);
+      btn.appendChild(sub);
+      if (task.count > 0) {
+        /* 次数角标：跨出按钮右上边缘 */
+        var badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = String(task.count);
+        btn.appendChild(badge);
+      }
+      var activeReminders = (task.reminders || []).filter(function (r) { return r.enabled !== false; });
+      if (activeReminders.length) {
+        /* 提醒铃铛：跨出按钮左上边缘 */
+        var bell = document.createElement('span');
+        bell.className = 't-bell';
+        bell.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+        bell.title = taskRemindSummary(task);
+        btn.classList.add('has-bell');
+        btn.appendChild(bell);
+      }
+    }
+
+    btn.addEventListener('click', function () { onTaskClick(task); });
+    attachTaskDrag(btn, task, cat);
+    return btn;
+  }
+
+  /* 生成一组任务按钮的 3 列网格；withAdd 时在末尾追加「添加任务」入口 */
+  function buildTaskGrid(cat, tasks, withAdd, subId) {
+    var grid = document.createElement('div');
+    grid.className = 'task-grid';
+    grid.dataset.subId = subId == null ? '' : subId;
+    (tasks || []).forEach(function (task) {
+      grid.appendChild(buildTaskButton(task, cat));
+    });
+    if (!(tasks || []).length && !withAdd) grid.classList.add('empty');
+    if (withAdd) {
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'task-btn add-task-btn';
+      var addLabel = document.createElement('span');
+      addLabel.className = 't-name';
+      addLabel.textContent = '+ 添加任务';
+      addBtn.appendChild(addLabel);
+      addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
+      grid.appendChild(addBtn);
+    }
+    return grid;
+  }
+
+  /* ================= 交互：点击与长按 ================= */
+  function onTaskClick(task) {
+    if (suppressClick) { suppressClick = false; return; }
+    if (!task.configured) {
+      openTaskSetup(task, null, false);
+      return;
+    }
+    var now = Date.now();
+    if (task.cycleStart === 0 || now >= resetAt(task)) {
+      /* 新周期首次完成 */
+      task.cycleStart = now;
+      task.count = 1;
+    } else {
+      /* 同一周期内可多次完成 */
+      task.count += 1;
+    }
+    save();
+    render();
+    syncRemindersToNative(); /* 周期起点可能变化：重算「跟随周期」提醒的下次触发 */
+  }
+
+  var suppressClick = false;
+
+  /* 吞掉长按触发后浏览器补发的那一次 click，避免误触 */
+  function swallowNextClick(el) {
+    var handler = function (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      el.removeEventListener('click', handler, true);
+    };
+    el.addEventListener('click', handler, true);
+  }
+
+  function attachLongPress(el, callback) {
+    var timer = null;
+    var sx = 0, sy = 0;
+
+    function start(x, y) {
+      sx = x; sy = y;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        swallowNextClick(el);
+        /* 清除长按过程中浏览器可能拉起的文本选区，避免弹出复制菜单 */
+        try {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
+          else if (sel && sel.empty) sel.empty();
+        } catch (e) {}
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+        callback();
+      }, LONG_PRESS_MS);
+    }
+    function cancel() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    el.addEventListener('touchstart', function (e) {
+      var t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+    }, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchcancel', cancel);
+    el.addEventListener('mousedown', function (e) { start(e.clientX, e.clientY); });
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+    /* 抑制系统长按菜单（移动端） */
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  /* ================= 任务按钮拖动（手机桌面风格） =================
+     长按按钮进入「可拖动」状态：
+       · 进入后不动 → 松手即弹出任务管理菜单（沿用原长按菜单）。
+       · 进入后移动手指 → 跟随手指拖动，可跨子分类（同一大分类内）自由摆放，
+         松手落位后即时保存；拖出分类范围则回到原位。
+     单击按钮仍正常记录完成，互不冲突。 */
+  function attachTaskDrag(btn, task, cat) {
+    var press = null;
+
+    function startPress(x, y) {
+      if (press) return;
+      press = { x: x, y: y, ready: false, dragging: false, timer: null, clone: null, offX: 0, offY: 0 };
+      press.timer = setTimeout(function () {
+        if (!press) return;
+        press.timer = null;
+        press.ready = true;
+        swallowNextClick(btn);
+        try {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.removeAllRanges) sel.removeAllRanges();
+          else if (sel && sel.empty) sel.empty();
+        } catch (e) {}
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+      }, LONG_PRESS_MS);
+    }
+
+    function cancelPress() {
+      if (!press) return;
+      if (press.timer) clearTimeout(press.timer);
+      if (press.clone && press.clone.parentNode) press.clone.parentNode.removeChild(press.clone);
+      btn.classList.remove('drag-origin');
+      press = null;
+    }
+
+    function startDrag(x, y) {
+      var r = btn.getBoundingClientRect();
+      press.dragging = true;
+      press.offX = press.x - r.left;
+      press.offY = press.y - r.top;
+      var clone = btn.cloneNode(true);
+      clone.className = btn.className;
+      clone.classList.add('drag-clone');
+      clone.style.position = 'fixed';
+      clone.style.margin = '0';
+      clone.style.width = r.width + 'px';
+      clone.style.height = r.height + 'px';
+      clone.style.left = r.left + 'px';
+      clone.style.top = r.top + 'px';
+      document.body.appendChild(clone);
+      press.clone = clone;
+      btn.classList.add('drag-origin');
+      moveDrag(x, y);
+    }
+
+    function moveDrag(x, y) {
+      if (!press || !press.dragging) return;
+      press.clone.style.left = (x - press.offX) + 'px';
+      press.clone.style.top = (y - press.offY) + 'px';
+      reposition(x, y);
+      autoScroll(y);
+    }
+
+    function autoScroll(y) {
+      var m = 56;
+      if (y < m) window.scrollBy(0, -(m - y) * 0.4);
+      else if (y > window.innerHeight - m) window.scrollBy(0, (y - (window.innerHeight - m)) * 0.4);
+    }
+
+    function reposition(x, y) {
+      var section = btn.closest('section.category');
+      if (!section) return;
+      var grids = section.querySelectorAll('.task-grid');
+      var targetGrid = null;
+      for (var i = 0; i < grids.length; i++) {
+        var gr = grids[i].getBoundingClientRect();
+        if (x >= gr.left && x <= gr.right && y >= gr.top - 10 && y <= gr.bottom + 10) { targetGrid = grids[i]; break; }
+      }
+      if (!targetGrid) return; /* 拖出该分类范围，保持原位 */
+
+      var buttons = targetGrid.querySelectorAll('.task-btn:not(.add-task-btn):not(.drag-origin)');
+      var best = null, bestD = Infinity;
+      for (var j = 0; j < buttons.length; j++) {
+        var br = buttons[j].getBoundingClientRect();
+        var cx = br.left + br.width / 2, cy = br.top + br.height / 2;
+        var d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+        if (d < bestD) { bestD = d; best = buttons[j]; }
+      }
+      var addBtn = targetGrid.querySelector('.add-task-btn');
+      if (!best) {
+        if (addBtn) targetGrid.insertBefore(btn, addBtn);
+        else targetGrid.appendChild(btn);
+        return;
+      }
+      var be = best.getBoundingClientRect();
+      if (x < be.left + be.width / 2) {
+        targetGrid.insertBefore(btn, best);
+      } else {
+        var next = best.nextSibling;
+        if (next && next.classList && next.classList.contains('add-task-btn')) targetGrid.insertBefore(btn, next);
+        else if (next && next !== btn) targetGrid.insertBefore(btn, next);
+        else if (addBtn) targetGrid.insertBefore(btn, addBtn);
+        else targetGrid.appendChild(btn);
+      }
+    }
+
+    function commitGridOrder() {
+      var section = btn.closest('section.category');
+      if (!section) return;
+      var grids = section.querySelectorAll('.task-grid');
+      var newTasks = [];
+      grids.forEach(function (g) {
+        var subId = g.dataset.subId || null;
+        if (subId === UNG_ID) subId = null;
+        g.querySelectorAll('.task-btn:not(.add-task-btn)').forEach(function (b) {
+          var t = null;
+          for (var k = 0; k < cat.tasks.length; k++) {
+            if (cat.tasks[k].id === b.dataset.taskId) { t = cat.tasks[k]; break; }
+          }
+          if (!t) return;
+          t.subId = subId;
+          newTasks.push(t);
+        });
+      });
+      if (newTasks.length) cat.tasks = newTasks;
+    }
+
+    function endPress() {
+      if (!press) return;
+      var p = press;
+      if (p.timer) clearTimeout(p.timer);
+      if (p.dragging) {
+        if (p.clone && p.clone.parentNode) p.clone.parentNode.removeChild(p.clone);
+        btn.classList.remove('drag-origin');
+        press = null;
+        commitGridOrder();
+        save();
+        render();
+        toast('位置已保存');
+        return;
+      }
+      if (p.ready) {
+        press = null;
+        openTaskMenu(task, cat);
+        return;
+      }
+      press = null;
+    }
+
+    /* ---- 触摸（移动端） ---- */
+    btn.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { cancelPress(); return; }
+      var t = e.touches[0];
+      startPress(t.clientX, t.clientY);
+    }, { passive: true });
+    btn.addEventListener('touchmove', function (e) {
+      if (!press) return;
+      var t = e.touches[0];
+      if (!press.ready) {
+        if (Math.abs(t.clientX - press.x) > 10 || Math.abs(t.clientY - press.y) > 10) cancelPress();
+        return;
+      }
+      e.preventDefault(); /* 阻止页面滚动，进入拖动 */
+      if (!press.dragging) startDrag(t.clientX, t.clientY);
+      else moveDrag(t.clientX, t.clientY);
+    }, { passive: false });
+    btn.addEventListener('touchend', function () { endPress(); });
+    btn.addEventListener('touchcancel', function () { cancelPress(); });
+
+    /* ---- 鼠标（桌面端） ---- */
+    btn.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      startPress(e.clientX, e.clientY);
+      function mm(ev) {
+        if (!press) { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); return; }
+        if (!press.ready) {
+          if (Math.abs(ev.clientX - press.x) > 10 || Math.abs(ev.clientY - press.y) > 10) { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); cancelPress(); }
+          return;
+        }
+        if (!press.dragging) startDrag(ev.clientX, ev.clientY);
+        else moveDrag(ev.clientX, ev.clientY);
+      }
+      function mu() {
+        document.removeEventListener('mousemove', mm);
+        document.removeEventListener('mouseup', mu);
+        endPress();
+      }
+      document.addEventListener('mousemove', mm);
+      document.addEventListener('mouseup', mu);
+    });
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+
+  /* ================= App 外壳：原生桥 / 底部导航 / 我的 / 主题色 ================= */
+  var Native = {
+    available: function () { return !!window.AndroidHost; },
+    /* 读取系统剪贴板：APK 内由原生提供；返回 null 表示不可用（回退网页 API） */
+    readClipboard: function () {
+      try { return window.AndroidHost ? (window.AndroidHost.readClipboard() || '') : null; } catch (e) { return null; }
+    },
+    copy: function (text) {
+      try { if (window.AndroidHost) { window.AndroidHost.copyText(String(text)); return true; } } catch (e) {}
+      return false;
+    },
+    setFloating: function (on) {
+      try { if (window.AndroidHost) { window.AndroidHost.setFloating(!!on); return true; } } catch (e) {}
+      return false;
+    },
+    floatingEnabled: function () {
+      try { return !!(window.AndroidHost && window.AndroidHost.floatingEnabled()); } catch (e) { return false; }
+    },
+    version: function () {
+      try { return window.AndroidHost ? (window.AndroidHost.appVersion() || '') : ''; } catch (e) { return ''; }
+    },
+    /* 系统提醒：把全部启用中的提醒规则（含 JS 算好的 nextAt）下发原生 AlarmManager 排程 */
+    syncReminders: function (json) {
+      try { if (window.AndroidHost) { window.AndroidHost.syncReminders(String(json)); return true; } } catch (e) {}
+      return false;
+    },
+    exactAlarmAllowed: function () {
+      try { return !!(window.AndroidHost && window.AndroidHost.exactAlarmAllowed()); } catch (e) { return true; }
+    },
+    openExactAlarmSettings: function () {
+      try { if (window.AndroidHost) { window.AndroidHost.openExactAlarmSettings(); return true; } } catch (e) {}
+      return false;
+    },
+    notificationsAllowed: function () {
+      try { return !!(window.AndroidHost && window.AndroidHost.notificationsAllowed()); } catch (e) { return true; }
+    },
+    openNotificationSettings: function () {
+      try { if (window.AndroidHost) { window.AndroidHost.openNotificationSettings(); return true; } } catch (e) {}
+      return false;
+    },
+    requestNotifications: function () {
+      try { if (window.AndroidHost) { window.AndroidHost.requestNotifications(); return true; } } catch (e) {}
+      return false;
+    }
+  };
+
+  /* ---------- 系统提醒同步（JS 为事实源，原生只负责按点响） ---------- */
+  /* 汇总全部账号下启用的提醒，nextAt 由页面内的 nextOccurrence 计算，保证与网页版语义一致 */
+  function collectRemindersForNative() {
+    var out = [];
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        cat.tasks.forEach(function (t) {
+          if (!t.configured) return;
+          (t.reminders || []).forEach(function (r) {
+            if (r.enabled === false) return;
+            var nextAt = 0;
+            try { nextAt = nextOccurrence(r, t, Date.now()) || 0; } catch (e) {}
+            out.push({
+              id: r.id,
+              taskId: t.id,
+              taskName: t.name,
+              accName: acc.name,
+              catName: cat.name,
+              time: r.time,
+              repeat: r.repeat,
+              days: (r.days || []).slice(),
+              date: r.date || '',
+              cycleDays: Math.max(1, t.cycleDays || 1),
+              cycleStart: t.cycleStart || 0,
+              nextAt: nextAt,
+              enabled: true
+            });
+          });
+        });
+      });
+    });
+    return out;
+  }
+
+  function syncRemindersToNative() {
+    if (!IN_APP || !Native.available()) return;
+    try {
+      var list = collectRemindersForNative();
+      Native.syncReminders(JSON.stringify(list));
+    } catch (e) {}
+  }
+
+  /* 原生闹钟触发且页面正在前台时，由原生回拨此函数：弹应用内提醒（与网页版同款弹窗） */
+  window.onNativeReminder = function (payload) {
+    try {
+      var p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
+      var found = null;
+      data.accounts.some(function (acc) {
+        return acc.categories.some(function (cat) {
+          return cat.tasks.some(function (t) {
+            if (t.id !== p.taskId) return false;
+            var r = (t.reminders || []).filter(function (rr) { return rr.id === p.id; })[0];
+            if (r) { found = { task: t, r: r }; return true; }
+            return false;
+          });
+        });
+      });
+      if (found) fireReminder(found.task, found.r);
+    } catch (e) {}
+  };
+
+  /* 从系统通知点击进入 App（URL 带 ?remind=<id>）：弹出对应提醒 */
+  function checkRemindFromIntent() {
+    var m = /[?&]remind=([^&]+)/.exec(location.search);
+    if (!m) return;
+    var rid = decodeURIComponent(m[1]);
+    setTimeout(function () {
+      var found = null;
+      data.accounts.some(function (acc) {
+        return acc.categories.some(function (cat) {
+          return cat.tasks.some(function (t) {
+            var r = (t.reminders || []).filter(function (rr) { return rr.id === rid; })[0];
+            if (r) { found = { task: t, r: r }; return true; }
+            return false;
+          });
+        });
+      });
+      if (found) fireReminder(found.task, found.r);
+    }, 500);
+  }
+
+  /* ---------- 底部导航 ---------- */
+  var BNAV_ICONS = {
+    task: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+    clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+    me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+  };
+
+  function currentUiTab() {
+    return meView ? 'me' : (clipboardView ? 'clip' : 'task');
+  }
+
+  function switchTab(tab) {
+    meView = tab === 'me';
+    clipboardView = tab === 'clip';
+    if (tab === 'task' && data.accounts.length && !data.activeAccountId) {
+      data.activeAccountId = data.accounts[0].id;
+    }
+    saveActiveTab();
+    render();
+  }
+
+  function renderBottomNav() {
+    var nav = document.getElementById('bottomNav');
+    if (!nav) return;
+    nav.innerHTML = '';
+    var items = [
+      { tab: 'task', label: '任务管理', icon: BNAV_ICONS.task },
+      { tab: 'clip', label: '剪贴板', icon: BNAV_ICONS.clip },
+      { tab: 'me', label: '我的', icon: BNAV_ICONS.me }
+    ];
+    var cur = currentUiTab();
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'bnav-item' + (cur === it.tab ? ' active' : '');
+      b.innerHTML = it.icon + '<span>' + it.label + '</span>';
+      b.addEventListener('click', function () { switchTab(it.tab); });
+      nav.appendChild(b);
+    });
+  }
+
+  /* ---------- 主题色 ---------- */
+  function currentAccent() {
+    var a = null;
+    try { a = localStorage.getItem(ACCENT_KEY); } catch (e) {}
+    return ACCENTS.indexOf(a) > -1 ? a : 'blue';
+  }
+  function applyAccent(name) {
+    if (ACCENTS.indexOf(name) < 0) name = 'blue';
+    document.documentElement.setAttribute('data-accent', name);
+    try { localStorage.setItem(ACCENT_KEY, name); } catch (e) {}
+  }
+  /* 深浅色模式：light / dark / ''（跟随系统） */
+  function themeMode() {
+    var t = null;
+    try { t = localStorage.getItem(THEME_KEY); } catch (e) {}
+    return (t === 'light' || t === 'dark') ? t : '';
+  }
+  function applyThemeMode(mode) {
+    if (mode === 'light' || mode === 'dark') { applyTheme(mode); return; }
+    /* 跟随系统：清除手动选择，按系统当前深浅色应用 */
+    try { localStorage.removeItem(THEME_KEY); } catch (e) {}
+    var dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', dark ? '#17191c' : '#ffffff');
+  }
+  /* 未手动选择深浅色时，跟随系统变化 */
+  function initSystemThemeFollow() {
+    if (!window.matchMedia) return;
+    var mq = matchMedia('(prefers-color-scheme: dark)');
+    var onChange = function (e) {
+      if (themeMode() !== '') return;
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', e.matches ? '#17191c' : '#ffffff');
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+
+  /* ---------- 「我的」页 ---------- */
+  function renderMePage() {
+    var main = document.getElementById('main');
+    main.innerHTML = '';
+
+    /* ===== 账号卡片 ===== */
+    var accCard = document.createElement('section');
+    accCard.className = 'category me-account';
+    var row = document.createElement('div');
+    row.className = 'me-acc-row';
+    var avatar = document.createElement('div');
+    avatar.className = 'me-avatar';
+    avatar.textContent = auth ? String(auth.nickname || auth.username).charAt(0) : '?';
+    var info = document.createElement('div');
+    info.className = 'me-acc-info';
+    var nm = document.createElement('div');
+    nm.className = 'me-acc-name';
+    nm.textContent = auth ? (auth.nickname || auth.username) : '未登录';
+    var sub = document.createElement('div');
+    sub.className = 'me-acc-sub';
+    sub.textContent = auth
+      ? '账号 ' + auth.username + (apiConfigured() ? ' · 云同步已连接' : '')
+      : '登录后可多设备云同步任务与剪贴板记录';
+    info.appendChild(nm);
+    info.appendChild(sub);
+    row.appendChild(avatar);
+    row.appendChild(info);
+    accCard.appendChild(row);
+    var btns = document.createElement('div');
+    btns.className = 'me-acc-btns';
+    if (auth) {
+      var syncBtn = document.createElement('button');
+      syncBtn.type = 'button';
+      syncBtn.className = 'btn btn-primary';
+      syncBtn.textContent = '立即同步';
+      syncBtn.addEventListener('click', function () { toast('同步请求已发送'); pullData(false); pushData(false); });
+      var logoutBtn = document.createElement('button');
+      logoutBtn.type = 'button';
+      logoutBtn.className = 'btn btn-ghost';
+      logoutBtn.textContent = '退出登录';
+      logoutBtn.addEventListener('click', function () { logout(); });
+      btns.appendChild(syncBtn);
+      btns.appendChild(logoutBtn);
+    } else {
+      var loginBtn = document.createElement('button');
+      loginBtn.type = 'button';
+      loginBtn.className = 'btn btn-primary';
+      loginBtn.textContent = '登录 / 注册';
+      loginBtn.addEventListener('click', function () { openAuthModal('login'); });
+      btns.appendChild(loginBtn);
+    }
+    accCard.appendChild(btns);
+    main.appendChild(accCard);
+
+    /* ===== 外观 ===== */
+    var lookCard = document.createElement('section');
+    lookCard.className = 'category';
+    var lookTitle = document.createElement('div');
+    lookTitle.className = 'me-group-title';
+    lookTitle.textContent = '外观';
+    lookCard.appendChild(lookTitle);
+
+    var modeRow = document.createElement('div');
+    modeRow.className = 'me-row';
+    var modeLabel = document.createElement('div');
+    modeLabel.className = 'me-row-label';
+    modeLabel.textContent = '深浅色模式';
+    modeRow.appendChild(modeLabel);
+    var seg = document.createElement('div');
+    seg.className = 'me-seg';
+    [['', '跟随系统'], ['light', '浅色'], ['dark', '深色']].forEach(function (opt) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'me-seg-btn' + (themeMode() === opt[0] ? ' active' : '');
+      b.textContent = opt[1];
+      b.addEventListener('click', function () {
+        applyThemeMode(opt[0]);
+        render();
+      });
+      seg.appendChild(b);
+    });
+    modeRow.appendChild(seg);
+    lookCard.appendChild(modeRow);
+
+    var accentRow = document.createElement('div');
+    accentRow.className = 'me-row';
+    var accentLabel = document.createElement('div');
+    accentLabel.className = 'me-row-label';
+    accentLabel.textContent = '主题色';
+    accentRow.appendChild(accentLabel);
+    var swatches = document.createElement('div');
+    swatches.className = 'me-swatches';
+    ACCENTS.forEach(function (name) {
+      var s = document.createElement('button');
+      s.type = 'button';
+      s.className = 'me-swatch sw-' + name + (currentAccent() === name ? ' active' : '');
+      s.title = ACCENT_NAMES[name] || name;
+      s.setAttribute('aria-label', ACCENT_NAMES[name] || name);
+      s.addEventListener('click', function () {
+        applyAccent(name);
+        render();
+      });
+      swatches.appendChild(s);
+    });
+    accentRow.appendChild(swatches);
+    lookCard.appendChild(accentRow);
+    main.appendChild(lookCard);
+
+    /* ===== 功能 ===== */
+    var funcCard = document.createElement('section');
+    funcCard.className = 'category';
+    var funcTitle = document.createElement('div');
+    funcTitle.className = 'me-group-title';
+    funcTitle.textContent = '功能';
+    funcCard.appendChild(funcTitle);
+
+    var floatRow = document.createElement('div');
+    floatRow.className = 'me-row';
+    var floatLabel = document.createElement('div');
+    floatLabel.className = 'me-row-label';
+    floatLabel.textContent = '剪贴板悬浮窗';
+    var floatDesc = document.createElement('div');
+    floatDesc.className = 'me-row-desc';
+    floatDesc.textContent = '开启后显示可拖拽悬浮球：点开即可一键保存剪贴板、快速记录任务';
+    floatLabel.appendChild(floatDesc);
+    floatRow.appendChild(floatLabel);
+    var nativeOk = Native.available();
+    var floatOn = Native.floatingEnabled();
+    var sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'me-switch ' + (floatOn ? 'on' : 'off');
+    sw.setAttribute('role', 'switch');
+    sw.setAttribute('aria-checked', floatOn ? 'true' : 'false');
+    if (!nativeOk) sw.disabled = true;
+    sw.addEventListener('click', function () {
+      if (!Native.available()) { toast('悬浮窗仅在 APK 内可用'); return; }
+      var next = !Native.floatingEnabled();
+      if (Native.setFloating(next)) {
+        sw.classList.toggle('on', next);
+        sw.classList.toggle('off', !next);
+        sw.setAttribute('aria-checked', next ? 'true' : 'false');
+        toast(next ? '悬浮窗已开启' : '悬浮窗已关闭');
+      } else {
+        toast('设置失败，请检查悬浮窗权限');
+      }
+    });
+    floatRow.appendChild(sw);
+    funcCard.appendChild(floatRow);
+    if (!nativeOk) {
+      var floatTip = document.createElement('div');
+      floatTip.className = 'me-row-desc me-row-tip';
+      floatTip.textContent = '当前运行在浏览器中，悬浮窗需安装 APK 版本后使用';
+      funcCard.appendChild(floatTip);
+    }
+
+    var syncRow = document.createElement('div');
+    syncRow.className = 'me-row';
+    var syncLabel = document.createElement('div');
+    syncLabel.className = 'me-row-label';
+    syncLabel.textContent = '云同步';
+    var syncDesc = document.createElement('div');
+    syncDesc.className = 'me-row-desc';
+    syncDesc.textContent = auth ? '已登录，任务与剪贴板记录自动同步' : '未登录，数据仅保存在本机';
+    syncLabel.appendChild(syncDesc);
+    syncRow.appendChild(syncLabel);
+    funcCard.appendChild(syncRow);
+    main.appendChild(funcCard);
+
+    /* ===== 关于 ===== */
+    var aboutCard = document.createElement('section');
+    aboutCard.className = 'category';
+    var aboutTitle = document.createElement('div');
+    aboutTitle.className = 'me-group-title';
+    aboutTitle.textContent = '关于';
+    aboutCard.appendChild(aboutTitle);
+    var verRow = document.createElement('div');
+    verRow.className = 'me-row';
+    var verLabel = document.createElement('div');
+    verLabel.className = 'me-row-label';
+    verLabel.textContent = '版本';
+    var verVal = document.createElement('div');
+    verVal.className = 'me-row-value';
+    verVal.textContent = Native.version() || (Native.available() ? 'APK 版' : '网页版');
+    verRow.appendChild(verLabel);
+    verRow.appendChild(verVal);
+    aboutCard.appendChild(verRow);
+    var storeRow = document.createElement('div');
+    storeRow.className = 'me-row';
+    var storeLabel = document.createElement('div');
+    storeLabel.className = 'me-row-label';
+    storeLabel.textContent = '数据存储';
+    var storeVal = document.createElement('div');
+    storeVal.className = 'me-row-value';
+    storeVal.textContent = '本机 + 云端（登录后）';
+    storeRow.appendChild(storeLabel);
+    storeRow.appendChild(storeVal);
+    aboutCard.appendChild(storeRow);
+    main.appendChild(aboutCard);
+  }
+
+  /* 任务页「管理」菜单：账号级操作聚合 */
+  function openAppManageMenu() {
+    var acc = activeAccount();
+    openMenuDialog('管理', [
+      {
+        label: '添加分类',
+        onClick: function () { openAddCategoryDialog(); }
+      },
+      {
+        label: '添加账号',
+        onClick: function () { openAddAccountDialog(); }
+      },
+      {
+        label: '重命名账号（' + acc.name + '）',
+        onClick: function () { openAccountMenu(acc); }
+      },
+      {
+        label: '任务拖动排序说明',
+        onClick: function () {
+          openModal(function (sheet, close) {
+            var h = document.createElement('h3');
+            h.textContent = '任务拖动排序';
+            sheet.appendChild(h);
+            var p = document.createElement('p');
+            p.className = 'hint';
+            p.textContent = '长按任意任务按钮，出现放大效果后拖动，即可在同一分类内（含子分类之间）自由排序，松手自动保存；拖出分类范围会回到原位。';
+            sheet.appendChild(p);
+            var ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'btn btn-primary';
+            ok.textContent = '知道了';
+            ok.addEventListener('click', close);
+            sheet.appendChild(ok);
+          });
+        }
+      }
+    ]);
+  }
+
+  /* ================= 弹窗基础 ================= */
+  var modalOpenAt = 0;
+
+  function openModal(build, opts) {
+    closeModal();
+    opts = opts || {};
+    modalOpenAt = Date.now();
+    var root = document.getElementById('modalRoot');
+    var mask = document.createElement('div');
+    mask.className = 'mask';
+    var sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    build(sheet, function () {
+      if (mask.parentNode) mask.parentNode.removeChild(mask);
+    });
+    mask.appendChild(sheet);
+    if (opts.dismissOnMask !== false) {
+      mask.addEventListener('click', function (e) {
+        if (e.target !== mask) return;
+        /* 刚弹出的 350ms 内忽略误触 */
+        if (Date.now() - modalOpenAt < 350) return;
+        if (mask.parentNode) mask.parentNode.removeChild(mask);
+      });
+    }
+    root.appendChild(mask);
+  }
+
+  function closeModal() {
+    document.getElementById('modalRoot').innerHTML = '';
+  }
+
+  /* 表单弹窗 */
+  function openFormDialog(o) {
+    var confirmed = false;
+    openModal(function (sheet, rawClose) {
+      function close() {
+        if (!confirmed && typeof o.onCancel === 'function') o.onCancel();
+        rawClose();
+      }
+      var h = document.createElement('h3');
+      h.textContent = o.title;
+      sheet.appendChild(h);
+
+      var inputs = {};
+      (o.fields || []).forEach(function (f) {
+        var wrap = document.createElement('div');
+        wrap.className = 'field';
+        var label = document.createElement('label');
+        label.textContent = f.label;
+        wrap.appendChild(label);
+        var input;
+        if (f.type === 'select') {
+          input = document.createElement('select');
+          (f.options || []).forEach(function (opt) {
+            var el = document.createElement('option');
+            el.value = opt.value;
+            el.textContent = opt.label;
+            if (String(opt.value) === String(f.value)) el.selected = true;
+            input.appendChild(el);
+          });
+        } else {
+          input = document.createElement('input');
+          input.type = f.type || 'text';
+          input.value = f.value == null ? '' : f.value;
+          if (f.placeholder) input.placeholder = f.placeholder;
+          if (f.min != null) input.min = f.min;
+          if (f.max != null) input.max = f.max;
+          if (f.type === 'number') input.inputMode = 'numeric';
+        }
+        inputs[f.key] = input;
+        wrap.appendChild(input);
+        sheet.appendChild(wrap);
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn ' + (o.danger ? 'btn-danger' : 'btn-primary');
+      okBtn.textContent = o.confirmText || '确定';
+      okBtn.addEventListener('click', function () {
+        var values = {};
+        for (var k in inputs) values[k] = inputs[k].value;
+        if (o.onConfirm(values, close) === false) return;
+        confirmed = true;
+        close();
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+
+      var first = sheet.querySelector('input, select');
+      if (first) setTimeout(function () { try { first.focus(); } catch (e) {} }, 60);
+    }, { dismissOnMask: o.dismissOnMask });
+  }
+
+  /* 菜单弹窗 */
+  function openMenuDialog(title, items) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = title;
+      sheet.appendChild(h);
+      var list = document.createElement('div');
+      list.className = 'menu-list';
+      items.forEach(function (it) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'menu-item' + (it.danger ? ' danger' : '');
+        b.textContent = it.label;
+        b.addEventListener('click', function () {
+          /* 先关闭菜单，再执行动作（动作可能打开新的弹窗） */
+          close();
+          it.onClick();
+        });
+        list.appendChild(b);
+      });
+      sheet.appendChild(list);
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.style.width = '100%';
+      cancelBtn.style.marginTop = '10px';
+      cancelBtn.addEventListener('click', close);
+      sheet.appendChild(cancelBtn);
+    });
+  }
+
+  /* 确认弹窗 */
+  function openConfirmDialog(title, message, onOk) {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = title;
+      sheet.appendChild(h);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.marginBottom = '14px';
+      p.textContent = message || '';
+      sheet.appendChild(p);
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-danger';
+      okBtn.textContent = '删除';
+      okBtn.addEventListener('click', function () { onOk(); close(); });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+    });
+  }
+
+  /* ================= 任务：设置 / 编辑 / 管理 ================= */
+  function openTaskSetup(task, cat, isNewAddition) {
+    var isEdit = !!task && task.configured;
+    var targetCat = cat;
+    if (!targetCat && task) {
+      var found = findTask(task.id);
+      targetCat = found && found.cat;
+    }
+    if (!isEdit && !task) {
+      /* 由「添加任务」入口创建的新按钮，先放入分类，取消时移除 */
+      targetCat = cat;
+      task = newTask();
+      targetCat.tasks.push(task);
+      isNewAddition = true;
+    }
+
+    var fields = [
+      { key: 'name', label: '任务名称', type: 'text', value: isEdit ? task.name : '', placeholder: '请输入任务名称' },
+      { key: 'cycle', label: '次数统计清零周期（天）', type: 'number', value: isEdit ? task.cycleDays : 1, min: 1, max: 3650, placeholder: '1' }
+    ];
+    if (targetCat.subcats && targetCat.subcats.length) {
+      var ungEntry = targetCat.subcats.filter(function (s) { return s.id === UNG_ID; })[0];
+      var subOptions = [{ value: '', label: (ungEntry && ungEntry.name) || '不分组' }].concat(
+        targetCat.subcats.filter(function (s) { return s.id !== UNG_ID; }).map(function (s) {
+          return { value: s.id, label: s.name };
+        })
+      );
+      fields.push({ key: 'subId', label: '子分类', type: 'select', value: isEdit ? (task.subId || '') : '', options: subOptions });
+    }
+
+    openFormDialog({
+      title: isEdit ? '编辑任务' : '设置任务',
+      dismissOnMask: isNewAddition ? false : true,
+      fields: fields,
+      confirmText: isEdit ? '保存' : '确定',
+      onConfirm: function (v) {
+        var name = (v.name || '').trim();
+        if (!name) { toast('请输入任务名称'); return false; }
+        var cycle = parseInt(v.cycle, 10);
+        if (!cycle || cycle < 1) cycle = 1;
+        if (cycle > 3650) cycle = 3650;
+        task.configured = true;
+        task.name = name;
+        task.cycleDays = cycle;
+        task.subId = (targetCat.subcats && targetCat.subcats.length && v.subId) ? v.subId : null;
+        save();
+        render();
+        syncRemindersToNative(); /* 周期天数/名称变化：重排系统闹钟 */
+        toast(isEdit ? '已保存' : '设置完成，点击按钮记录完成');
+      },
+      onCancel: function () {
+        /* 取消「添加任务」时移除刚创建的占位按钮 */
+        if (!task.configured && targetCat) {
+          var i = targetCat.tasks.indexOf(task);
+          if (i > -1) targetCat.tasks.splice(i, 1);
+          save();
+          render();
+        }
+      }
+    });
+  }
+
+  /* 长按管理：编辑 / 调整次数 / 重置统计 / 删除 */
+  function openTaskMenu(task, cat) {
+    if (!task.configured) {
+      openMenuDialog('任务按钮', [
+        {
+          label: '设置任务',
+          onClick: function () { openTaskSetup(task, cat, false); }
+        },
+        {
+          label: '删除任务按钮',
+          danger: true,
+          onClick: function () {
+            openConfirmDialog('删除任务按钮', '确定删除这个尚未设置的任务按钮吗？', function () {
+              removeTask(task);
+              toast('已删除');
+            });
+          }
+        }
+      ]);
+      return;
+    }
+    openMenuDialog('管理 · ' + task.name, [
+      {
+        label: '编辑任务',
+        onClick: function () { openTaskSetup(task, cat, false); }
+      },
+      {
+        label: '调整次数（当前 ' + task.count + ' 次）',
+        onClick: function () { openCountDialog(task); }
+      },
+      {
+        label: (task.reminders && task.reminders.length)
+          ? '设置提醒（已设 ' + task.reminders.filter(function (r) { return r.enabled !== false; }).length + ' 条）'
+          : '设置提醒',
+        onClick: function () { openRemindDialog(task); }
+      },
+      {
+        label: '重置统计（次数清零）',
+        onClick: function () {
+          task.count = 0;
+          task.cycleStart = 0;
+          save();
+          render();
+          syncRemindersToNative(); /* 周期起点清零：重算「跟随周期」提醒 */
+          toast('已重置，按钮回到未完成状态');
+        }
+      },
+      {
+        label: '删除任务',
+        danger: true,
+        onClick: function () {
+          openConfirmDialog('删除任务', '确定删除任务「' + task.name + '」吗？', function () {
+            removeTask(task);
+            toast('已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  /* 手动调整次数 */
+  /* ================= 提醒功能（应用内弹窗 + 系统日历导出） ================= */
+  var REMIND_PRESETS = [
+    { label: '早 9 点', value: '09:00' },
+    { label: '中午 12 点', value: '12:00' },
+    { label: '晚上 21 点', value: '21:00' }
+  ];
+  var REPEAT_OPTIONS = [
+    { value: 'daily', label: '每天' },
+    { value: 'weekly', label: '每周' },
+    { value: 'cycle', label: '跟随周期' },
+    { value: 'date', label: '指定日期' }
+  ];
+  var WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+  var FIRED_KEY = 'taskRecordTool.remindFired.v1';
+  var SNOOZE_KEY = 'taskRecordTool.remindSnooze.v1';
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function parseTime(str) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(str || ''));
+    if (!m) return null;
+    var hh = +m[1], mm = +m[2];
+    if (hh > 23 || mm > 59) return null;
+    return { hh: hh, mm: mm };
+  }
+
+  /* 单条提醒的中文描述，如「每天 09:00」「每周一、三 09:00」「每3日 09:00」「10月20日 09:00」 */
+  function reminderLabel(r, task) {
+    var base = '';
+    if (r.repeat === 'weekly') {
+      var ds = (r.days || []).slice().sort();
+      if (ds.length === 1) base = '每周' + WEEK_LABELS[ds[0]];
+      else if (ds.length > 1) base = '每周' + WEEK_LABELS[ds[0]] + '、' + ds.slice(1).map(function (d) { return WEEK_LABELS[d]; }).join('、');
+      else base = '每周';
+    } else if (r.repeat === 'cycle') {
+      base = '每 ' + Math.max(1, task.cycleDays || 1) + ' 日';
+    } else if (r.repeat === 'date') {
+      var p = String(r.date || '').split('-');
+      base = p.length === 3 ? (+p[1]) + '月' + (+p[2]) + '日' : '指定日期';
+    } else {
+      base = '每天';
+    }
+    return base + ' ' + r.time;
+  }
+
+  function taskRemindSummary(task) {
+    var list = (task.reminders || []).filter(function (r) { return r.enabled !== false; });
+    if (!list.length) return '';
+    return '已设 ' + list.length + ' 条提醒：' + list.map(function (r) { return reminderLabel(r, task); }).join('；');
+  }
+
+  /* 某一天（传入当天 0 点）的触发时刻；weekly 不在选定星期返回 null */
+  function occurrenceAt(r, dayStartTs) {
+    var p = parseTime(r.time);
+    if (!p) return null;
+    var d = new Date(dayStartTs);
+    d.setHours(p.hh, p.mm, 0, 0);
+    if (r.repeat === 'weekly' && (r.days || []).indexOf(d.getDay()) === -1) return null;
+    return d.getTime();
+  }
+
+  /* fromTs 之后的下一次触发时刻 */
+  function nextOccurrence(r, task, fromTs) {
+    if (r.repeat === 'date') {
+      var parts = String(r.date || '').split('-');
+      if (parts.length !== 3) return null;
+      var d = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+      var p = parseTime(r.time);
+      if (!p) return null;
+      d.setHours(p.hh, p.mm, 0, 0);
+      return d.getTime() >= fromTs ? d.getTime() : null;
+    }
+    if (r.repeat === 'cycle') {
+      var N = Math.max(1, task.cycleDays || 1);
+      var base = startOfDay(task.cycleStart || fromTs);
+      var pp = parseTime(r.time);
+      if (!pp) return null;
+      var k = 0, occ;
+      do {
+        occ = new Date(base + k * N * DAY);
+        occ.setHours(pp.hh, pp.mm, 0, 0);
+        k++;
+      } while (occ.getTime() < fromTs && k < 4000);
+      return occ.getTime() >= fromTs ? occ.getTime() : null;
+    }
+    var day = startOfDay(fromTs);
+    for (var i = 0; i < 400; i++) {
+      var o = occurrenceAt(r, day + i * DAY);
+      if (o !== null && o >= fromTs) return o;
+    }
+    return null;
+  }
+
+  /* 刚刚过去（120 秒内）的那次触发时刻，用于应用内弹窗判断 */
+  function recentOccurrence(r, task, nowTs) {
+    var today = occurrenceAt(r, startOfDay(nowTs));
+    if (today !== null && today <= nowTs && nowTs - today <= 120000) return today;
+    if (r.repeat === 'cycle') {
+      var N = Math.max(1, task.cycleDays || 1);
+      var base = startOfDay(task.cycleStart || nowTs);
+      var p = parseTime(r.time);
+      if (!p) return null;
+      var k = Math.floor((startOfDay(nowTs) - base) / (N * DAY));
+      for (var i = k; i >= 0 && i >= k - 2; i--) {
+        var d = new Date(base + i * N * DAY);
+        d.setHours(p.hh, p.mm, 0, 0);
+        if (d.getTime() <= nowTs && nowTs - d.getTime() <= 120000) return d.getTime();
+      }
+    }
+    return null;
+  }
+
+  function icsEsc(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  }
+
+  /* 生成日历日程文件（.ics）：每个提醒一个日程，按重复规则生成 RRULE + 准点闹钟 */
+  function buildReminderIcs(task) {
+    var list = (task.reminders || []).filter(function (r) { return r.enabled !== false && parseTime(r.time); });
+    if (!list.length) return null;
+    var now = Date.now();
+    var events = [];
+    list.forEach(function (r) {
+      var start = nextOccurrence(r, task, now);
+      if (!start) return;
+      var end = start + 15 * 60000;
+      function fmt(d) {
+        return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+          'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
+      }
+      var rrule = '';
+      if (r.repeat === 'daily') rrule = 'RRULE:FREQ=DAILY';
+      else if (r.repeat === 'weekly') {
+        var map = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+        var days = (r.days || []).slice().sort().map(function (d) { return map[d]; });
+        if (!days.length) return;
+        rrule = 'RRULE:FREQ=WEEKLY;BYDAY=' + days.join(',');
+      } else if (r.repeat === 'cycle') {
+        rrule = 'RRULE:FREQ=DAILY;INTERVAL=' + Math.max(1, task.cycleDays || 1);
+      }
+      events.push([
+        'BEGIN:VEVENT',
+        'UID:task-' + task.id + '-' + r.id + '-' + start + '@task-record',
+        'DTSTAMP:' + fmt(new Date()),
+        'DTSTART:' + fmt(new Date(start)),
+        'DTEND:' + fmt(new Date(end)),
+        rrule,
+        'SUMMARY:' + icsEsc('任务提醒：' + task.name),
+        'DESCRIPTION:' + icsEsc('该去完成任务「' + task.name + '」了（' + reminderLabel(r, task) + '，任务记录工具）'),
+        'BEGIN:VALARM',
+        'TRIGGER:-PT0M',
+        'ACTION:DISPLAY',
+        'DESCRIPTION:' + icsEsc('任务提醒：' + task.name),
+        'END:VALARM',
+        'END:VEVENT'
+      ].filter(function (l) { return l !== ''; }).join('\r\n'));
+    });
+    if (!events.length) return null;
+    return [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//任务记录工具//任务管理//CN',
+      'CALSCALE:GREGORIAN',
+      events.join('\r\n'),
+      'END:VCALENDAR'
+    ].join('\r\n');
+  }
+
+  function downloadReminderIcs(task) {
+    var ics = buildReminderIcs(task);
+    if (!ics) { toast('当前没有可导出的提醒'); return; }
+    var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '任务提醒-' + task.name + '.ics';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      try { URL.revokeObjectURL(a.href); } catch (e) {}
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 800);
+  }
+
+  /* ---------- 应用内提醒：弹窗 + 提示音 + 稍后提醒 ---------- */
+  var remindQueue = [];
+  var remindPopupOpen = false;
+
+  function playRemindSound() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = playRemindSound._ctx || (playRemindSound._ctx = new Ctx());
+      if (ctx.state === 'suspended') ctx.resume();
+      [0, 0.22].forEach(function (delay) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 880;
+        var t0 = ctx.currentTime + delay;
+        g.gain.setValueAtTime(0.001, t0);
+        g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t0);
+        o.stop(t0 + 0.2);
+      });
+    } catch (e) { /* 不支持音频时静默 */ }
+  }
+
+  function loadFiredReminders() {
+    try { return JSON.parse(localStorage.getItem(FIRED_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveFiredReminders(o) {
+    try {
+      /* 只保留最近 2 天的记录，避免无限增长 */
+      var cutoff = Date.now() - 2 * 86400000, out = {};
+      Object.keys(o).forEach(function (k) { if (o[k] > cutoff) out[k] = o[k]; });
+      localStorage.setItem(FIRED_KEY, JSON.stringify(out));
+    } catch (e) {}
+  }
+  function loadSnoozes() {
+    try { return JSON.parse(localStorage.getItem(SNOOZE_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveSnoozes(o) {
+    try { localStorage.setItem(SNOOZE_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+
+  function fireReminder(task, r) {
+    remindQueue.push({ task: task, r: r });
+    pumpRemindQueue();
+  }
+
+  function pumpRemindQueue() {
+    if (remindPopupOpen || !remindQueue.length) return;
+    var item = remindQueue.shift();
+    var task = item.task, r = item.r;
+    remindPopupOpen = true;
+    playRemindSound();
+    openModal(function (sheet, rawClose) {
+      function close() {
+        remindPopupOpen = false;
+        rawClose();
+        setTimeout(pumpRemindQueue, 120);
+      }
+      var bell = document.createElement('div');
+      bell.className = 'remind-bell';
+      bell.innerHTML = '<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
+      sheet.appendChild(bell);
+      var title = document.createElement('div');
+      title.className = 'remind-pop-title';
+      title.textContent = '该完成任务了';
+      sheet.appendChild(title);
+      var name = document.createElement('div');
+      name.className = 'remind-pop-task';
+      name.textContent = task.name;
+      sheet.appendChild(name);
+      var meta = document.createElement('div');
+      meta.className = 'remind-pop-meta';
+      var accName = '';
+      data.accounts.forEach(function (a) {
+        a.categories.forEach(function (c) { if (c.tasks.indexOf(task) > -1) accName = a.name; });
+      });
+      meta.textContent = (accName ? accName + ' · ' : '') + r.time + ' · ' + reminderLabel(r, task);
+      sheet.appendChild(meta);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.className = 'btn btn-primary';
+      doneBtn.textContent = '✓ 标记完成';
+      doneBtn.addEventListener('click', function () {
+        if (task.cycleStart === 0 || Date.now() >= resetAt(task)) {
+          task.cycleStart = Date.now();
+          task.count = 1;
+        } else {
+          task.count += 1;
+        }
+        save();
+        render();
+        syncRemindersToNative();
+        close();
+        toast('已记录一次完成');
+      });
+      var snoozeBtn = document.createElement('button');
+      snoozeBtn.type = 'button';
+      snoozeBtn.className = 'btn btn-ghost';
+      snoozeBtn.textContent = '10 分钟后再提醒';
+      snoozeBtn.addEventListener('click', function () {
+        var snoozes = loadSnoozes();
+        snoozes[task.id + '|' + r.id] = Date.now() + 10 * 60000;
+        saveSnoozes(snoozes);
+        close();
+        toast('好的，10 分钟后再次提醒');
+      });
+      var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'btn btn-ghost';
+      closeBtn.textContent = '关闭';
+      closeBtn.addEventListener('click', close);
+      actions.appendChild(doneBtn);
+      actions.appendChild(snoozeBtn);
+      actions.appendChild(closeBtn);
+      sheet.appendChild(actions);
+    }, { dismissOnMask: false });
+  }
+
+  /* 周期性检查：到点的提醒弹窗；稍后提醒到点再次触发 */
+  function checkReminders() {
+    var now = Date.now();
+    var fired = loadFiredReminders();
+    var snoozes = loadSnoozes();
+    var dirty = false;
+
+    Object.keys(snoozes).forEach(function (key) {
+      if (snoozes[key] > now) return;
+      var rid = key.split('|')[1];
+      var found = null;
+      data.accounts.some(function (acc) {
+        return acc.categories.some(function (cat) {
+          return cat.tasks.some(function (t) {
+            var hit = (t.reminders || []).some(function (rr) { return rr.id === rid; });
+            if (hit) { found = { task: t, r: (t.reminders || []).filter(function (rr) { return rr.id === rid; })[0] }; return true; }
+            return false;
+          });
+        });
+      });
+      delete snoozes[key];
+      dirty = true;
+      if (found) fireReminder(found.task, found.r);
+    });
+
+    data.accounts.forEach(function (acc) {
+      acc.categories.forEach(function (cat) {
+        cat.tasks.forEach(function (t) {
+          if (!t.configured || !t.reminders || !t.reminders.length) return;
+          t.reminders.forEach(function (r) {
+            if (r.enabled === false) return;
+            var occ = recentOccurrence(r, t, now);
+            if (!occ) return;
+            var key = t.id + '|' + r.id + '|' + occ;
+            if (fired[key]) return;
+            fired[key] = now;
+            dirty = true;
+            fireReminder(t, r);
+          });
+        });
+      });
+    });
+
+    if (dirty) { saveFiredReminders(fired); saveSnoozes(snoozes); }
+  }
+
+  /* 提醒管理弹窗：多条提醒 + 重复规则（每天 / 每周几 / 跟随任务周期 / 指定日期） */
+  function openRemindDialog(task) {
+    /* 复制一份列表，取消时不改动原数据 */
+    var list = (task.reminders || []).map(function (r) {
+      return { id: r.id, time: r.time, repeat: r.repeat, days: (r.days || []).slice(), date: r.date, enabled: r.enabled !== false };
+    });
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '设置提醒 · ' + task.name;
+      sheet.appendChild(h);
+      var tip = document.createElement('p');
+      tip.className = 'hint';
+      tip.style.textAlign = 'left';
+      tip.innerHTML = '可添加<strong>多条提醒</strong>，支持每天 / 每周几 / 跟随任务周期 / 指定日期。<br>页面打开时到点会<strong>弹出提醒</strong>并响铃；也可导出 .ics 到系统日历（关掉页面也能提醒）。';
+      sheet.appendChild(tip);
+
+      /* 安卓 / 鸿蒙：引导下载 App（App 内运行则改为绿色提示） */
+      if (detectBrowser().isAndroid || detectBrowser().isHarmony) {
+        var apkBox = document.createElement('div');
+        if (IN_APP) {
+          apkBox.style.cssText = 'margin:10px 0 2px;padding:10px 12px;border-radius:10px;' +
+            'background:#E8F5EC;border:1px solid #B7E3C6;font-size:12.5px;line-height:1.6;color:#0F6B3A;';
+          apkBox.innerHTML = '当前在 <strong>App</strong> 内运行，提醒由<strong>系统闹钟</strong>承载，' +
+            '关闭页面也能准时提醒。';
+        } else {
+          apkBox.style.cssText = 'margin:10px 0 2px;padding:10px 12px;border-radius:10px;' +
+            'background:#FFF4E6;border:1px solid #FFD8A8;font-size:12.5px;line-height:1.6;color:#8A4B08;';
+          apkBox.innerHTML = '<strong>安卓 / 鸿蒙设备使用完整提醒功能，请下载 App</strong><br>' +
+            '网页版在后台或关闭时无法提醒（浏览器限制）。<br>' +
+            '装 App 后，到点由<strong>系统闹钟</strong>直接提醒，无需保持页面打开。';
+        }
+        sheet.appendChild(apkBox);
+
+        /* App 内：检查系统权限（精确闹钟 / 通知），缺失时引导去开启 */
+        if (IN_APP) {
+          if (!Native.exactAlarmAllowed()) {
+            var alarmPerm = document.createElement('div');
+            alarmPerm.style.cssText = 'margin:8px 0 2px;padding:10px 12px;border-radius:10px;' +
+              'background:#FFF4E6;border:1px solid #FFD8A8;font-size:12.5px;line-height:1.6;color:#8A4B08;';
+            alarmPerm.innerHTML = '未获得<strong>精确闹钟</strong>权限，系统提醒可能延迟几分钟。';
+            var alarmBtn = document.createElement('button');
+            alarmBtn.type = 'button';
+            alarmBtn.textContent = '去开启精确闹钟权限';
+            alarmBtn.style.cssText = 'display:block;width:100%;margin-top:8px;padding:8px 0;border:none;' +
+              'border-radius:8px;background:#FF7A00;color:#fff;font-size:13px;font-weight:600;cursor:pointer;';
+            alarmBtn.addEventListener('click', function () { Native.openExactAlarmSettings(); });
+            alarmPerm.appendChild(alarmBtn);
+            sheet.appendChild(alarmPerm);
+          }
+          if (!Native.notificationsAllowed()) {
+            var notifPerm = document.createElement('div');
+            notifPerm.style.cssText = 'margin:8px 0 2px;padding:10px 12px;border-radius:10px;' +
+              'background:#FFF4E6;border:1px solid #FFD8A8;font-size:12.5px;line-height:1.6;color:#8A4B08;';
+            notifPerm.innerHTML = '未获得<strong>通知</strong>权限，到点时无法弹出系统提醒。';
+            var notifBtn = document.createElement('button');
+            notifBtn.type = 'button';
+            notifBtn.textContent = '去开启通知权限';
+            notifBtn.style.cssText = 'display:block;width:100%;margin-top:8px;padding:8px 0;border:none;' +
+              'border-radius:8px;background:#FF7A00;color:#fff;font-size:13px;font-weight:600;cursor:pointer;';
+            notifBtn.addEventListener('click', function () {
+              Native.requestNotifications();
+              setTimeout(function () { if (!Native.notificationsAllowed()) Native.openNotificationSettings(); }, 1200);
+            });
+            notifPerm.appendChild(notifBtn);
+            sheet.appendChild(notifPerm);
+          }
+        }
+
+        var dl = document.createElement('button');
+        dl.type = 'button';
+        dl.textContent = '↓ 下载 App（APK）';
+        dl.style.cssText = 'display:block;text-align:center;margin:8px 0 2px;padding:9px 0;' +
+          'border:none;border-radius:10px;background:#FF7A00;color:#fff;text-decoration:none;' +
+          'font-size:13.5px;font-weight:600;cursor:pointer;';
+        if (IN_APP) dl.style.display = 'none';
+        dl.addEventListener('click', function () { toast('暂未上线'); });
+        sheet.appendChild(dl);
+      }
+
+      /* 已有提醒列表 */
+      var listWrap = document.createElement('div');
+      listWrap.className = 'remind-grid';
+      function paintList() {
+        listWrap.innerHTML = '';
+        if (!list.length) {
+          var empty = document.createElement('p');
+          empty.className = 'hint';
+          empty.style.margin = '4px 0';
+          empty.textContent = '当前没有提醒';
+          listWrap.appendChild(empty);
+          return;
+        }
+        list.forEach(function (r, idx) {
+          var row = document.createElement('div');
+          row.className = 'remind-item';
+          var label = document.createElement('span');
+          label.className = 'r-label';
+          label.textContent = reminderLabel(r, task);
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'r-del';
+          del.textContent = '✕';
+          del.title = '删除这条提醒';
+          del.addEventListener('click', function () {
+            list.splice(idx, 1);
+            paintList();
+          });
+          row.appendChild(label);
+          row.appendChild(del);
+          listWrap.appendChild(row);
+        });
+      }
+      paintList();
+      sheet.appendChild(listWrap);
+
+      /* 添加新提醒 */
+      var addTitle = document.createElement('div');
+      addTitle.style.cssText = 'font-size:13px;color:var(--muted);margin:10px 0 6px;';
+      addTitle.textContent = '+ 添加提醒';
+      sheet.appendChild(addTitle);
+
+      var chosenTime = '09:00';
+      var repeat = 'daily';
+      var days = [];
+      var dateVal = '';
+
+      /* 快捷时间 */
+      var timeSeg = document.createElement('div');
+      timeSeg.className = 'seg';
+      function paintTimeSeg() {
+        Array.prototype.forEach.call(timeSeg.children, function (c, i) {
+          c.classList.toggle('on', REMIND_PRESETS[i].value === chosenTime);
+        });
+      }
+      REMIND_PRESETS.forEach(function (p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = p.label;
+        b.addEventListener('click', function () {
+          chosenTime = p.value;
+          timeInput.value = p.value;
+          paintTimeSeg();
+        });
+        timeSeg.appendChild(b);
+      });
+      sheet.appendChild(timeSeg);
+
+      var timeWrap = document.createElement('div');
+      timeWrap.className = 'field';
+      var timeLabel = document.createElement('label');
+      timeLabel.textContent = '提醒时间（可自定义）';
+      timeWrap.appendChild(timeLabel);
+      var timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.value = chosenTime;
+      timeInput.addEventListener('input', function () {
+        if (timeInput.value) { chosenTime = timeInput.value; paintTimeSeg(); }
+      });
+      timeWrap.appendChild(timeInput);
+      sheet.appendChild(timeWrap);
+      paintTimeSeg();
+
+      /* 重复方式 */
+      var repeatWrap = document.createElement('div');
+      repeatWrap.className = 'field';
+      var repeatLabelEl = document.createElement('label');
+      repeatLabelEl.textContent = '重复方式';
+      repeatWrap.appendChild(repeatLabelEl);
+      var repeatSeg = document.createElement('div');
+      repeatSeg.className = 'seg';
+      function paintRepeatSeg() {
+        Array.prototype.forEach.call(repeatSeg.children, function (c) {
+          c.classList.toggle('on', c.dataset.v === repeat);
+        });
+      }
+      REPEAT_OPTIONS.forEach(function (o) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = o.label;
+        b.dataset.v = o.value;
+        b.addEventListener('click', function () {
+          repeat = o.value;
+          paintRepeatSeg();
+          paintExtra();
+        });
+        repeatSeg.appendChild(b);
+      });
+      repeatWrap.appendChild(repeatSeg);
+      sheet.appendChild(repeatWrap);
+      paintRepeatSeg();
+
+      /* 重复方式的附加选项（星期几 / 周期说明 / 日期） */
+      var extra = document.createElement('div');
+      sheet.appendChild(extra);
+      function paintExtra() {
+        extra.innerHTML = '';
+        if (repeat === 'weekly') {
+          var row = document.createElement('div');
+          row.className = 'week-row';
+          WEEK_LABELS.forEach(function (w, i) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = w;
+            b.classList.toggle('on', days.indexOf(i) > -1);
+            b.addEventListener('click', function () {
+              var idx = days.indexOf(i);
+              if (idx > -1) days.splice(idx, 1); else days.push(i);
+              b.classList.toggle('on', days.indexOf(i) > -1);
+            });
+            row.appendChild(b);
+          });
+          extra.appendChild(row);
+          var hint = document.createElement('p');
+          hint.className = 'hint';
+          hint.style.textAlign = 'left';
+          hint.style.margin = '0 0 8px';
+          hint.textContent = '选择每周哪几天提醒';
+          extra.appendChild(hint);
+        } else if (repeat === 'cycle') {
+          var hint2 = document.createElement('p');
+          hint2.className = 'hint';
+          hint2.style.textAlign = 'left';
+          hint2.style.margin = '0 0 8px';
+          hint2.textContent = '跟随任务刷新周期：每 ' + Math.max(1, task.cycleDays || 1) + ' 日提醒一次（与清零周期同步）';
+          extra.appendChild(hint2);
+        } else if (repeat === 'date') {
+          var wrap = document.createElement('div');
+          wrap.className = 'field';
+          var l = document.createElement('label');
+          l.textContent = '提醒日期（仅一次）';
+          wrap.appendChild(l);
+          var di = document.createElement('input');
+          di.type = 'date';
+          di.value = dateVal || new Date().toISOString().slice(0, 10);
+          di.addEventListener('input', function () { dateVal = di.value; });
+          wrap.appendChild(di);
+          extra.appendChild(wrap);
+        }
+      }
+      paintExtra();
+
+      /* 添加按钮 */
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-primary';
+      addBtn.textContent = '+ 添加这条提醒';
+      addBtn.style.cssText = 'width:100%;margin-top:4px;';
+      addBtn.addEventListener('click', function () {
+        if (!parseTime(chosenTime)) { toast('请选择或输入提醒时间'); return; }
+        if (repeat === 'weekly' && !days.length) { toast('请至少选择一个星期几'); return; }
+        if (repeat === 'date' && !dateVal) { toast('请选择提醒日期'); return; }
+        list.push({
+          id: genId(),
+          time: chosenTime,
+          repeat: repeat,
+          days: days.slice(),
+          date: repeat === 'date' ? dateVal : '',
+          enabled: true
+        });
+        paintList();
+        toast('已添加 ' + reminderLabel(list[list.length - 1], task));
+      });
+      sheet.appendChild(addBtn);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      actions.style.marginTop = '14px';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var icsBtn = document.createElement('button');
+      icsBtn.type = 'button';
+      icsBtn.className = 'btn btn-ghost';
+      icsBtn.textContent = '导出到日历';
+      icsBtn.addEventListener('click', function () {
+        task.reminders = list;
+        save();
+        render();
+        syncRemindersToNative();
+        downloadReminderIcs(task);
+      });
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-primary';
+      okBtn.textContent = '保存';
+      okBtn.addEventListener('click', function () {
+        task.reminders = list;
+        save();
+        render();
+        syncRemindersToNative();
+        close();
+        toast(list.length ? '已保存 ' + list.length + ' 条提醒' : '已清除全部提醒');
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(icsBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+    });
+  }
+
+  function openCountDialog(task) {
+    var value = task.count;
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '调整次数 · ' + task.name;
+      sheet.appendChild(h);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = '当前统计周期内的完成次数';
+      sheet.appendChild(p);
+
+      var row = document.createElement('div');
+      row.className = 'counter-row';
+      var minus = document.createElement('button');
+      minus.type = 'button';
+      minus.className = 'counter-btn';
+      minus.textContent = '−';
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'counter-val';
+      input.value = String(value);
+      input.min = '0';
+      input.max = String(MAX_COUNT);
+      input.inputMode = 'numeric';
+      var plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'counter-btn';
+      plus.textContent = '+';
+
+      function setValue(n) {
+        value = Math.max(0, Math.min(MAX_COUNT, n));
+        input.value = String(value);
+      }
+      minus.addEventListener('click', function () { setValue(value - 1); });
+      plus.addEventListener('click', function () { setValue(value + 1); });
+      input.addEventListener('input', function () {
+        var n = parseInt(input.value, 10);
+        if (!isNaN(n)) value = Math.max(0, Math.min(MAX_COUNT, n));
+      });
+      row.appendChild(minus);
+      row.appendChild(input);
+      row.appendChild(plus);
+      sheet.appendChild(row);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'btn btn-primary';
+      okBtn.textContent = '确定';
+      okBtn.addEventListener('click', function () {
+        var n = parseInt(input.value, 10);
+        var finalVal = isNaN(n) ? 0 : Math.max(0, Math.min(MAX_COUNT, n));
+        task.count = finalVal;
+        if (finalVal > 0 && (task.cycleStart === 0 || Date.now() >= resetAt(task))) {
+          task.cycleStart = Date.now();
+        }
+        if (finalVal === 0) task.cycleStart = 0;
+        save();
+        render();
+        close();
+        toast('次数已调整为 ' + finalVal);
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+
+      setTimeout(function () { try { input.focus(); input.select(); } catch (e) {} }, 60);
+    });
+  }
+
+  /* ================= 登录 / 注册 ================= */
+  function openAuthModal(initialMode) {
+    if (!apiConfigured()) {
+      openModal(function (sheet, close) {
+        var h = document.createElement('h3');
+        h.textContent = '云同步未配置';
+        sheet.appendChild(h);
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = '云同步服务地址尚未配置，暂时无法登录。本机功能可正常使用，数据保存在本机浏览器。';
+        sheet.appendChild(p);
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-primary';
+        ok.textContent = '知道了';
+        ok.style.width = '100%';
+        ok.style.marginTop = '12px';
+        ok.addEventListener('click', close);
+        sheet.appendChild(ok);
+      });
+      return;
+    }
+
+    var mode = initialMode || 'login';
+    openModal(function (sheet, close) {
+      var inputs = {};
+      var errEl = document.createElement('p');
+      errEl.className = 'hint';
+      errEl.style.color = 'var(--danger)';
+      errEl.style.display = 'none';
+      errEl.style.marginBottom = '0';
+
+      function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
+      function hideErr() { errEl.style.display = 'none'; }
+
+      function field(key, label, type) {
+        var wrap = document.createElement('div');
+        wrap.className = 'field';
+        var l = document.createElement('label');
+        l.textContent = label;
+        wrap.appendChild(l);
+        var input = document.createElement('input');
+        input.type = type;
+        if (type === 'password') input.autocomplete = 'new-password';
+        wrap.appendChild(input);
+        inputs[key] = input;
+        return wrap;
+      }
+
+      function render() {
+        sheet.innerHTML = '';
+        var h = document.createElement('h3');
+        h.textContent = mode === 'login' ? '登录账号' : '注册账号';
+        sheet.appendChild(h);
+        var tip = document.createElement('p');
+        tip.className = 'hint';
+        tip.style.marginBottom = '12px';
+        tip.textContent = mode === 'login'
+          ? '登录后自动同步该账号在所有设备上的任务'
+          : '注册后会自动把本机已设置的任务同步到新账号';
+        sheet.appendChild(tip);
+        sheet.appendChild(field('username', mode === 'register' ? '账号（7-11 位数字）' : '账号（7-11 位数字）', 'text'));
+        inputs.username.inputMode = 'numeric';
+        inputs.username.autocomplete = 'username';
+        if (mode === 'register') {
+          sheet.appendChild(field('nickname', '昵称（1-20 个字符）', 'text'));
+          inputs.nickname.autocomplete = 'nickname';
+        }
+        sheet.appendChild(field('password', '密码（至少 6 位）', 'password'));
+        if (mode === 'register') sheet.appendChild(field('confirm', '确认密码', 'password'));
+        sheet.appendChild(errEl);
+        var actions = document.createElement('div');
+        actions.className = 'sheet-actions';
+        actions.style.marginTop = '12px';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'btn btn-ghost';
+        cancelBtn.textContent = '取消';
+        cancelBtn.addEventListener('click', close);
+        var okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.className = 'btn btn-primary';
+        okBtn.textContent = mode === 'login' ? '登录' : '注册';
+        okBtn.addEventListener('click', submit);
+        actions.appendChild(cancelBtn);
+        actions.appendChild(okBtn);
+        sheet.appendChild(actions);
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.style.cssText = 'width:100%;margin-top:10px;border:none;background:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px;';
+        toggle.textContent = mode === 'login' ? '没有账号？立即注册' : '已有账号？去登录';
+        toggle.addEventListener('click', function () {
+          mode = mode === 'login' ? 'register' : 'login';
+          render();
+        });
+        sheet.appendChild(toggle);
+        setTimeout(function () { try { inputs.username.focus(); } catch (e) {} }, 60);
+      }
+
+      function submit() {
+        hideErr();
+        var username = (inputs.username.value || '').trim();
+        var nickname = inputs.nickname ? (inputs.nickname.value || '').trim() : '';
+        var password = inputs.password.value || '';
+        var confirmPw = inputs.confirm ? (inputs.confirm.value || '') : password;
+        if (!/^\d{7,11}$/.test(username)) { showErr('账号须为 7-11 位数字'); return; }
+        if (mode === 'register' && (nickname.length < 1 || nickname.length > 20)) { showErr('昵称须为 1-20 个字符'); return; }
+        if (password.length < 6) { showErr('密码长度至少 6 位'); return; }
+        if (mode === 'register' && password !== confirmPw) { showErr('两次输入的密码不一致'); return; }
+        var okBtn = sheet.querySelector('.btn-primary');
+        okBtn.disabled = true;
+        okBtn.textContent = '提交中…';
+        doAuth(mode, username, password, nickname).then(function (msg) {
+          close();
+          toast(msg);
+        }).catch(function (err) {
+          showErr((err && err.message) || '操作失败，请重试');
+          okBtn.disabled = false;
+          okBtn.textContent = mode === 'login' ? '登录' : '注册';
+        });
+      }
+
+      render();
+    });
+  }
+
+  /* ================= 账号 Tab ================= */
+  function openAddAccountDialog() {
+    var defName = '账号' + (data.accounts.length + 1);
+    var options = [{ value: '', label: '不复制（空白账号）' }];
+    data.accounts.forEach(function (a) {
+      options.push({ value: a.id, label: '复制自：' + a.name });
+    });
+    openFormDialog({
+      title: '添加账号',
+      fields: [
+        { key: 'name', label: '账号名称', type: 'text', value: defName, placeholder: defName },
+        { key: 'copyFrom', label: '复制已有账号的任务', type: 'select', value: '', options: options }
+      ],
+      confirmText: '创建',
+      onConfirm: function (v) {
+        var name = (v.name || '').trim() || defName;
+        var acc = { id: genId(), name: name, categories: [] };
+        var src = null;
+        if (v.copyFrom) {
+          data.accounts.forEach(function (a) { if (a.id === v.copyFrom) src = a; });
+        }
+        if (src) {
+          /* 深拷贝任务结构，次数与周期进度归零 */
+          src.categories.forEach(function (cat) {
+            var nc = { id: genId(), name: cat.name, tasks: [] };
+            cat.tasks.forEach(function (t) {
+              var nt = newTask();
+              nt.configured = t.configured;
+              nt.name = t.name;
+              nt.cycleDays = t.cycleDays;
+              nt.reminders = JSON.parse(JSON.stringify(t.reminders || []));
+              /* 提醒 id 必须重新生成：原生按 id 排程，重复会互相覆盖 */
+              nt.reminders.forEach(function (r) { r.id = genId(); });
+              nc.tasks.push(nt);
+            });
+            acc.categories.push(nc);
+          });
+        }
+        if (!acc.categories.length) {
+          acc.categories.push({ id: genId(), name: '默认分类', tasks: [] });
+        }
+        data.accounts.push(acc);
+        data.activeAccountId = acc.id;
+        save();
+        render();
+        syncRemindersToNative();
+        toast('已创建「' + name + '」');
+      }
+    });
+  }
+
+  function openAccountMenu(acc) {
+    openMenuDialog('管理账号 · ' + acc.name, [
+      {
+        label: '重命名',
+        onClick: function () {
+          openFormDialog({
+            title: '重命名账号',
+            fields: [{ key: 'name', label: '账号名称', type: 'text', value: acc.name }],
+            confirmText: '保存',
+            onConfirm: function (v) {
+              var name = (v.name || '').trim();
+              if (!name) { toast('请输入账号名称'); return false; }
+              acc.name = name;
+              save();
+              render();
+              toast('已重命名');
+            }
+          });
+        }
+      },
+      {
+        label: '删除账号',
+        danger: true,
+        onClick: function () {
+          if (data.accounts.length <= 1) { toast('至少需要保留一个账号'); return; }
+          openConfirmDialog('删除账号', '确定删除「' + acc.name + '」及其所有任务吗？', function () {
+            var i = data.accounts.indexOf(acc);
+            if (i > -1) data.accounts.splice(i, 1);
+            if (data.activeAccountId === acc.id) data.activeAccountId = data.accounts[0].id;
+            save();
+            render();
+            toast('账号已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  /* ================= 分类 ================= */
+  function openCategoryMenu(cat) {
+    openMenuDialog('管理分类 · ' + cat.name, [
+      {
+        label: '重命名分类',
+        onClick: function () {
+          openFormDialog({
+            title: '重命名分类',
+            fields: [{ key: 'name', label: '分类名称', type: 'text', value: cat.name }],
+            confirmText: '保存',
+            onConfirm: function (v) {
+              var name = (v.name || '').trim();
+              if (!name) { toast('请输入分类名称'); return false; }
+              cat.name = name;
+              save();
+              render();
+            }
+          });
+        }
+      },
+      {
+        label: '添加 / 管理子分类',
+        onClick: function () { openSubcatManager(cat); }
+      },
+      {
+        label: '删除分类',
+        danger: true,
+        onClick: function () {
+          openConfirmDialog('删除分类', '确定删除「' + cat.name + '」及其下所有任务吗？', function () {
+            var acc = activeAccount();
+            var i = acc.categories.indexOf(cat);
+            if (i > -1) acc.categories.splice(i, 1);
+            if (!acc.categories.length) {
+              acc.categories.push({ id: genId(), name: '默认分类', tasks: [] });
+            }
+            save();
+            render();
+            toast('分类已删除');
+          });
+        }
+      }
+    ]);
+  }
+
+  function openAddCategoryDialog() {
+    openFormDialog({
+      title: '添加分类',
+      fields: [{ key: 'name', label: '分类名称', type: 'text', value: '', placeholder: '例如：工作 / 学习 / 每日打卡' }],
+      confirmText: '添加',
+      onConfirm: function (v) {
+        var name = (v.name || '').trim();
+        if (!name) { toast('请输入分类名称'); return false; }
+        activeAccount().categories.push({ id: genId(), name: name, tasks: [] });
+        save();
+        render();
+      }
+    });
+  }
+
+  /* ================= 子分类管理 ================= */
+  function openSubcatManager(cat) {
+    if (!Array.isArray(cat.subcats)) cat.subcats = [];
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '子分类 · ' + cat.name;
+      sheet.appendChild(h);
+
+      var tip = document.createElement('div');
+      tip.className = 'subcat-tip';
+      tip.textContent = '拖动 ≡ 可调整子分类顺序，其下任务会跟随移动。';
+      sheet.appendChild(tip);
+
+      var list = document.createElement('div');
+      list.className = 'subcat-list';
+      sheet.appendChild(list);
+
+      function commitOrder() {
+        var rows = Array.prototype.slice.call(list.querySelectorAll('.subcat-row'));
+        var ids = rows.map(function (r) { return r.dataset.sid; });
+        cat.subcats.sort(function (a, b) { return ids.indexOf(a.id) - ids.indexOf(b.id); });
+        save();
+      }
+
+      function attachRowDrag(grip, row) {
+        function rowAt(y) {
+          var rows = Array.prototype.slice.call(list.querySelectorAll('.subcat-row'));
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i] === row) continue;
+            var r = rows[i].getBoundingClientRect();
+            if (y < r.top + r.height / 2) return rows[i];
+          }
+          return null;
+        }
+        function move(y) {
+          var ref = rowAt(y);
+          if (ref) { if (row.nextSibling !== ref) list.insertBefore(row, ref); }
+          else if (list.lastChild !== row) list.appendChild(row);
+        }
+        function up() {
+          document.removeEventListener('touchmove', tmv);
+          document.removeEventListener('touchend', up);
+          document.removeEventListener('touchcancel', up);
+          document.removeEventListener('mousemove', mmv);
+          document.removeEventListener('mouseup', up);
+          row.classList.remove('dragging');
+          commitOrder();
+        }
+        function tmv(e) { if (e.touches.length !== 1) return; e.preventDefault(); move(e.touches[0].clientY); }
+        function mmv(e) { move(e.clientY); }
+        function down(y) {
+          row.classList.add('dragging');
+          document.addEventListener('touchmove', tmv, { passive: false });
+          document.addEventListener('touchend', up);
+          document.addEventListener('touchcancel', up);
+          document.addEventListener('mousemove', mmv);
+          document.addEventListener('mouseup', up);
+          move(y);
+        }
+        grip.addEventListener('touchstart', function (e) {
+          e.preventDefault();
+          down(e.touches[0].clientY);
+        }, { passive: false });
+        grip.addEventListener('mousedown', function (e) {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          down(e.clientY);
+        });
+      }
+
+      function renderRows() {
+        list.innerHTML = '';
+        if (!cat.subcats.length) {
+          var empty = document.createElement('div');
+          empty.className = 'subcat-empty';
+          empty.textContent = '还没有子分类，点击下方按钮添加';
+          list.appendChild(empty);
+          return;
+        }
+        cat.subcats.forEach(function (sc) {
+          var isUng = sc.id === UNG_ID;
+          var row = document.createElement('div');
+          row.className = 'subcat-row';
+          row.dataset.sid = sc.id;
+          var grip = document.createElement('span');
+          grip.className = 'grip';
+          grip.textContent = '≡';
+          grip.title = '拖动排序';
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.value = sc.name;
+          input.placeholder = '子分类名称';
+          input.addEventListener('input', function () { sc.name = input.value; });
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'mini-del';
+          del.textContent = '✕';
+          del.title = '删除子分类';
+          del.addEventListener('click', function () {
+            var i = cat.subcats.indexOf(sc);
+            if (i > -1) cat.subcats.splice(i, 1);
+            cat.tasks.forEach(function (t) { if (t.subId === sc.id) t.subId = null; });
+            renderRows();
+            save();
+          });
+          if (isUng) del.style.visibility = 'hidden';
+          row.appendChild(grip);
+          row.appendChild(input);
+          row.appendChild(del);
+          list.appendChild(row);
+          attachRowDrag(grip, row);
+        });
+      }
+      renderRows();
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'subcat-add';
+      addBtn.textContent = '+ 添加子分类';
+      addBtn.addEventListener('click', function () {
+        var realCount = cat.subcats.filter(function (s) { return s.id !== UNG_ID; }).length;
+        var sc = { id: genId(), name: '' };
+        cat.subcats.push(sc);
+        if (!realCount) {
+          /* 第一个真实子分类接管原本的「未分组」默认区域：原默认任务归入该子分类 */
+          var ids = {};
+          cat.subcats.forEach(function (s) { ids[s.id] = true; });
+          cat.tasks.forEach(function (t) { if (!t.subId || !ids[t.subId]) t.subId = sc.id; });
+        }
+        renderRows();
+        var inputs = list.querySelectorAll('.subcat-row input');
+        if (inputs.length) { try { inputs[inputs.length - 1].focus(); } catch (e) {} }
+      });
+      sheet.appendChild(addBtn);
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'btn btn-primary';
+      done.textContent = '完成';
+      done.addEventListener('click', function () {
+        cat.subcats = cat.subcats.filter(function (s) {
+          if (s.id === UNG_ID) { s.name = (s.name || '').trim() || '未分组'; return true; }
+          return (s.name || '').trim();
+        });
+        cat.subcats.forEach(function (s) { if (s.id !== UNG_ID) s.name = s.name.trim(); });
+        save();
+        close();
+        render();
+      });
+      actions.appendChild(done);
+      sheet.appendChild(actions);
+    }, { dismissOnMask: true });
+  }
+
+  /* ================= Toast ================= */
+  var toastTimer = null;
+  function toast(msg) {
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
+  }
+
+  /* ============ 下载 App（安卓 / 鸿蒙） ============ */
+  function openAppDownloadDialog() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '下载 App · 完整提醒';
+      sheet.appendChild(h);
+
+      var why = document.createElement('p');
+      why.className = 'hint';
+      why.style.textAlign = 'left';
+      why.innerHTML = '网页版提醒需要页面保持运行；切到后台或关闭后，' +
+        '<strong>浏览器会冻结页面的 JS</strong>，这是所有浏览器的安全设计，' +
+        '靠系统设置无法解除（华为浏览器更进一步，连网站通知权限都不开放）。<br><br>' +
+        '装上 App 后，提醒改由<strong>系统闹钟（AlarmManager）</strong>直接触发通知：' +
+        '<br>• 无需保持页面打开<br>• 不依赖 Google 推送服务<br>• 国内网络可正常使用';
+      sheet.appendChild(why);
+
+      var dl = document.createElement('button');
+      dl.type = 'button';
+      dl.textContent = '↓ 下载 APK 安装包';
+      dl.style.cssText = 'display:block;text-align:center;margin:12px 0 4px;padding:11px 0;' +
+        'border:none;border-radius:10px;background:#FF7A00;color:#fff;' +
+        'font-size:14px;font-weight:600;cursor:pointer;';
+      dl.addEventListener('click', function () { toast('暂未上线'); });
+      sheet.appendChild(dl);
+
+      var note = document.createElement('p');
+      note.className = 'hint';
+      note.style.textAlign = 'left';
+      note.innerHTML = '安装时若提示「未知来源」，选择允许即可。' +
+        '装好后打开 App 登录同一账号，任务数据与网页版实时同步。';
+      sheet.appendChild(note);
+
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-ghost';
+      ok.textContent = '关闭';
+      ok.style.width = '100%';
+      ok.style.marginTop = '10px';
+      ok.addEventListener('click', close);
+      sheet.appendChild(ok);
+    });
+  }
+
+  /* ================= 添加到桌面（PWA，全品牌浏览器兼容） ================= */
+  var deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+  /* 部分浏览器（如鸿蒙）安装成功后不会派发 appinstalled，这里做兜底刷新 */
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null;
+    updateInstallBtn();
+  });
+
+  function isStandalone() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function detectBrowser() {
+    var ua = navigator.userAgent || '';
+    return {
+      isIOS: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+      isHarmony: /HarmonyOS|harmony|ArkWeb|HuaweiBrowser|HUAWEI/i.test(ua),
+      isWeixin: /MicroMessenger/i.test(ua),
+      isMi: /MiuiBrowser/i.test(ua),
+      isOppo: /HeyTapBrowser|OppoBrowser/i.test(ua),
+      isVivo: /VivoBrowser/i.test(ua),
+      isSamsung: /SamsungBrowser/i.test(ua),
+      isAndroid: /Android/i.test(ua)
+    };
+  }
+
+  function updateInstallBtn() {
+    var btn = document.getElementById('installBtn');
+    if (!btn) return;
+    if (IN_APP) {
+      /* App 内运行：添加到桌面无意义，隐藏该按钮 */
+      btn.style.display = 'none';
+      return;
+    }
+    if (isStandalone()) {
+      /* 不禁用按钮：避免个别浏览器禁用后点击完全无反馈 */
+      btn.innerHTML = '<span class="pill-full">✓ 已在桌面运行</span><span class="pill-short">✓ 桌面</span>';
+      btn.dataset.standalone = '1';
+    }
+  }
+
+  /* App 内运行时的界面适配：与网页版做区分 */
+  function applyInAppMode() {
+    if (!IN_APP) return;
+    document.body.classList.add('in-app');
+  }
+
+  /* ================= 深色 / 浅色主题 ================= */
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'dark' ? '#17191c' : '#ffffff');
+  }
+  function initThemeToggle() {
+    var btn = document.getElementById('themeToggle');
+    if (!btn) return;
+
+    /* ===== 悬浮窗：拖拽移动 + 位置持久化 ===== */
+    var THEME_BTN_KEY = 'taskRecordTool.themeBtn.v1';
+    var MARGIN = 6;    /* 距屏幕边缘最小留白（px） */
+    var THRESH = 5;    /* 位移小于该值视为点击而非拖拽（px） */
+    var dragging = false, moved = false;
+    var startX = 0, startY = 0, baseLeft = 0, baseTop = 0, lastLeft = 0, lastTop = 0;
+    var pointerHandled = false;  /* 指针已处理过（点击/拖拽），屏蔽随后合成的 click */
+
+    function btnSize() { return [btn.offsetWidth || 38, btn.offsetHeight || 46]; }
+    function clamp(left, top) {
+      var sz = btnSize();
+      var maxL = Math.max(MARGIN, window.innerWidth - sz[0] - MARGIN);
+      var maxT = Math.max(MARGIN, window.innerHeight - sz[1] - MARGIN);
+      return [Math.min(Math.max(MARGIN, left), maxL), Math.min(Math.max(MARGIN, top), maxT)];
+    }
+    function place(left, top) {
+      var p = clamp(left, top);
+      lastLeft = p[0]; lastTop = p[1];
+      btn.style.left = p[0] + 'px';
+      btn.style.top = p[1] + 'px';
+      btn.style.right = 'auto';
+      btn.style.bottom = 'auto';
+    }
+    function savePos() {
+      try { localStorage.setItem(THEME_BTN_KEY, JSON.stringify({ left: lastLeft, top: lastTop })); } catch (e) {}
+    }
+
+    /* 初始位置：优先读取已保存位置；否则默认右侧中上方 */
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(THEME_BTN_KEY) || 'null'); } catch (e) {}
+    if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+      place(saved.left, saved.top);
+    } else {
+      var sz = btnSize();
+      place(window.innerWidth - sz[0] - 10, window.innerHeight * 0.36);
+    }
+
+    /* 长按不要弹出系统菜单（影响拖拽体验） */
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    btn.addEventListener('pointerdown', function (e) {
+      if (e.button && e.button !== 0) return;  /* 仅响应鼠标主键 */
+      dragging = true; moved = false;
+      startX = e.clientX; startY = e.clientY;
+      var rect = btn.getBoundingClientRect();
+      baseLeft = rect.left; baseTop = rect.top;
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!moved && Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+      moved = true;
+      place(baseLeft + dx, baseTop + dy);
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      btn.classList.remove('dragging');
+      pointerHandled = true;
+      if (moved) {
+        savePos();  /* 拖拽结束：记住新位置 */
+      } else {
+        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');  /* 未拖动 = 点击切换 */
+      }
+    }
+    btn.addEventListener('pointerup', endDrag);
+    btn.addEventListener('pointercancel', function () {
+      dragging = false;
+      btn.classList.remove('dragging');
+    });
+
+    /* 键盘（Enter / Space）激活时走 click；指针事件已处理过则跳过 */
+    btn.addEventListener('click', function () {
+      if (pointerHandled) { pointerHandled = false; return; }
+      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+    });
+
+    /* 视口尺寸变化：把按钮收回可见区域 */
+    window.addEventListener('resize', function () { place(lastLeft, lastTop); });
+
+    /* 未手动选择过主题时，跟随系统深浅色变化 */
+    var stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+    if (!stored && window.matchMedia) {
+      var mq = matchMedia('(prefers-color-scheme: dark)');
+      var onChange = function (e) { applyTheme(e.matches ? 'dark' : 'light'); };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+  }
+
+  function openInstallHelp() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '添加到桌面';
+      sheet.appendChild(h);
+      var img = document.createElement('img');
+      img.src = 'icon-192.png';
+      img.alt = '任务管理';
+      img.style.cssText = 'display:block;width:72px;height:72px;margin:0 auto 12px;border-radius:16px;box-shadow:0 2px 8px rgba(16,24,40,.15);';
+      sheet.appendChild(img);
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.style.textAlign = 'left';
+      var b = detectBrowser();
+      var html = '';
+      if (b.isIOS) {
+        html = 'iPhone / iPad（Safari）：<br>1. 点击底部<strong>分享按钮</strong>（□↑）<br>2. 选择「<strong>添加到主屏幕</strong>」<br>3. 点击「添加」，桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isHarmony) {
+        html = '鸿蒙手机（华为/鸿蒙浏览器）：<br>1. 点击浏览器<strong>右下角菜单按钮</strong>（⋮ / ⌄ /「更多」）或底部「工具箱」<br>2. 在弹出面板的「<strong>常用功能</strong>」里点「<strong>＋ 添加至桌面</strong>」<br>3. 确认后桌面显示名称「<strong>任务管理</strong>」<br><br>小提示：各品牌浏览器都不允许网页直接代点这个菜单，需要手动点一次；点过一次后浏览器通常会记住，下次可从桌面直接打开。';
+      } else if (b.isWeixin) {
+        html = '微信内置浏览器：<br>1. 点击右上角 <strong>⋯</strong><br>2. 选择「<strong>在浏览器中打开</strong>」<br>3. 在浏览器中再次打开本页面，然后按该方法添加到桌面';
+      } else if (b.isMi) {
+        html = '小米手机（小米浏览器）：<br>1. 点击底部<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加至桌面</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isOppo || b.isVivo) {
+        html = 'OPPO / vivo 手机：<br>1. 点击浏览器<strong>菜单</strong>（⋮）<br>2. 选择「<strong>添加到桌面</strong>」或「<strong>安装应用</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isSamsung) {
+        html = '三星手机（三星浏览器）：<br>1. 点击底部<strong>菜单</strong>（☰）<br>2. 选择「<strong>添加到主屏幕</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else if (b.isAndroid) {
+        html = '安卓手机（Chrome 等浏览器）：<br>1. 点击右上角<strong>菜单</strong>（⋮）<br>2. 选择「<strong>安装应用</strong>」或「<strong>添加到主屏幕</strong>」<br>3. 桌面显示名称「<strong>任务管理</strong>」';
+      } else {
+        html = '电脑浏览器：<br>1. 点击地址栏右侧的<strong>安装图标</strong>（⊕）<br>2. 确认安装，应用名称「<strong>任务管理</strong>」';
+      }
+      html += '<br><br>找不到对应选项？请在浏览器菜单里查找「添加到桌面 / 添加至主屏幕 / 安装应用 / 桌面快捷方式」等类似入口。';
+      p.innerHTML = html;
+      sheet.appendChild(p);
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn-primary';
+      ok.textContent = '知道了';
+      ok.style.width = '100%';
+      ok.style.marginTop = '14px';
+      ok.addEventListener('click', close);
+      sheet.appendChild(ok);
+    });
+  }
+
+  function bindHeaderButtons() {
+    var installBtn = document.getElementById('installBtn');
+    /* App 版顶栏无按钮：安装引导已移除，登录入口在「我的」页 */
+    if (!installBtn) return;
+    installBtn.addEventListener('click', function () {
+      if (installBtn.dataset.standalone) { toast('当前已从桌面图标运行'); return; }
+      var b = detectBrowser();
+      /* 鸿蒙浏览器不弹原生安装框（部分版本无响应），直接给图文指引 */
+      if (deferredPrompt && !b.isHarmony) {
+        try {
+          deferredPrompt.prompt();
+          Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
+            deferredPrompt = null;
+          });
+          return;
+        } catch (e) {
+          /* 原生安装不可用时走指引 */
+        }
+      }
+      openInstallHelp();
+    });
+
+    var authBtn = document.getElementById('authBtn');
+    authBtn.addEventListener('click', function () {
+      if (auth) {
+        openMenuDialog('云同步 · ' + (auth.nickname || auth.username), [
+          {
+            label: '立即同步',
+            onClick: function () {
+              toast('同步请求已发送');
+              pullData(false);
+              pushData(false);
+            }
+          },
+          {
+            label: '下载 App（完整提醒）',
+            onClick: function () { openAppDownloadDialog(); }
+          },
+          {
+            label: '退出登录',
+            danger: true,
+            onClick: function () { logout(); }
+          }
+        ]);
+      } else {
+        openAuthModal('login');
+      }
+    });
+  }
+
+  /* ================= 启动 ================= */
+  bindHeaderButtons();
+  initSystemThemeFollow();
+  restoreActiveTab();
+  checkCycles();
+  if (pruneClipboards()) save();
+  render();
+  updateAuthUI();
+  checkReminders();
+  syncRemindersToNative(); /* 启动即对齐一次系统闹钟（含开机后原生补排的场景） */
+  checkRemindFromIntent(); /* 从系统通知点击进入时弹出对应提醒 */
+  if (auth && apiConfigured()) {
+    /* 保持登录状态：自动拉取云端最新数据 */
+    pullData(false);
+  }
+  setInterval(function () {
+    checkCycles();
+    checkReminders();
+    if (pruneClipboards()) {
+      save();
+      if (clipboardView) renderClipboardList();
+    }
+    if (auth) pullData(true);
+  }, 30000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) {
+      checkCycles();
+      /* 悬浮窗（另一个 WebView）可能刚写入过记录 / 任务计数：重新读取本机数据 */
+      data = loadData();
+      render();
+      syncRemindersToNative(); /* 悬浮窗可能改过周期起点：重排系统闹钟 */
+      if (auth) pullData(true);
+    } else if (syncTimer) {
+      /* 切到后台：立即上传待同步数据，避免防抖期内被杀掉 */
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      pushData(true);
+    }
+  });
+  window.addEventListener('pagehide', function () {
+    if (syncTimer) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      pushData(true);
+    }
+  });
+})();
+</script>
+</body>
+</html>
