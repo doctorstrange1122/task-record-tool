@@ -1538,6 +1538,19 @@
     }).catch(function () { /* 离线时静默失败 */ });
   }
 
+  /* 轻量探测：只请求版本号（几十字节），发现云端比本地新才拉全量——省流量、低延迟 */
+  function pollMeta() {
+    if (!auth || !apiConfigured() || document.hidden) return;
+    apiFetch('/api/meta').then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (r) {
+        if (res.ok && r.updated_at && r.updated_at > (auth.lastSync || 0)) {
+          pullData(true);
+        }
+      });
+    }).catch(function () { /* 离线静默 */ });
+  }
+
   function doAuth(mode, username, password, nickname) {
     return apiFetch(mode === 'login' ? '/api/login' : '/api/register', {
       method: 'POST',
@@ -4309,15 +4322,20 @@
       save();
       if (clipboardView) renderClipboardList();
     }
-    if (auth) pullData(true);
+    if (auth) pollMeta(); /* 轻量探测：仅当云端有更新时才拉全量 */
   }, 30000);
   /* 提醒单独用更短的轮询：即使系统闹钟被系统延后，页面在前台时也能尽快弹出（与云同步 30s 频率解耦） */
   setInterval(checkReminders, 10000);
-  /* 剪贴板页在前台可见时高频拉取（3s）：近实时看到其他设备保存的内容 */
+  /* 剪贴板页在前台可见时高频探测（3s）：只请求版本号，发现更新才拉全量，近实时看到其他设备的内容 */
   setInterval(function () {
     if (document.hidden || !clipboardView) return;
-    if (auth && apiConfigured()) pullData(true);
+    pollMeta();
   }, 3000);
+  /* 其他页面前台时低频探测（15s） */
+  setInterval(function () {
+    if (document.hidden || clipboardView) return;
+    pollMeta();
+  }, 15000);
   /* 窗口重新获得焦点 / 从后退缓存恢复：立即拉一次，避免 visibilitychange 漏网 */
   window.addEventListener('focus', function () {
     if (auth && apiConfigured()) pullData(true);
