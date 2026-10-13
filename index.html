@@ -813,7 +813,7 @@
     transition: background-color .25s ease, color .25s ease, border-color .25s ease;
   }
 
-  /* ---------- 主题切换悬浮按钮（右侧边缘中上方） ---------- */
+  /* ---------- 主题切换悬浮按钮（可自由拖拽的悬浮窗，位置由 JS 定位） ---------- */
   #themeToggle {
     position: fixed;
     right: 0;
@@ -826,15 +826,23 @@
     justify-content: center;
     padding: 0;
     border: 1px solid var(--border);
-    border-right: none;
-    border-radius: 12px 0 0 12px;
+    border-radius: 12px;
     background: var(--card);
     color: var(--text);
-    box-shadow: -2px 2px 10px rgba(16, 24, 40, .14);
-    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(16, 24, 40, .18);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
   #themeToggle:active { transform: scale(.92); }
+  #themeToggle.dragging {
+    cursor: grabbing;
+    transform: scale(1.06);
+    box-shadow: 0 6px 18px rgba(16, 24, 40, .3);
+    transition: none;
+  }
   #themeToggle svg { width: 20px; height: 20px; display: block; }
   /* 浅色模式显示月亮（点击进深色），深色模式显示太阳（点击回浅色） */
   #themeToggle .icon-sun { display: none; }
@@ -1001,11 +1009,11 @@
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
-  /* 剪贴板记录时间：第一行（mm:dd），第二行（hh:mm） */
+  /* 剪贴板记录时间：第一行 mm-dd，第二行 hh:mm */
   function clipTimeText(at) {
     var d = new Date(at);
-    return '（' + pad2(d.getMonth() + 1) + ':' + pad2(d.getDate()) + '）\n' +
-           '（' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + '）';
+    return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + '\n' +
+           pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
   function copyText(text, okMsg) {
@@ -3489,9 +3497,89 @@
   function initThemeToggle() {
     var btn = document.getElementById('themeToggle');
     if (!btn) return;
+
+    /* ===== 悬浮窗：拖拽移动 + 位置持久化 ===== */
+    var THEME_BTN_KEY = 'taskRecordTool.themeBtn.v1';
+    var MARGIN = 6;    /* 距屏幕边缘最小留白（px） */
+    var THRESH = 5;    /* 位移小于该值视为点击而非拖拽（px） */
+    var dragging = false, moved = false;
+    var startX = 0, startY = 0, baseLeft = 0, baseTop = 0, lastLeft = 0, lastTop = 0;
+    var pointerHandled = false;  /* 指针已处理过（点击/拖拽），屏蔽随后合成的 click */
+
+    function btnSize() { return [btn.offsetWidth || 38, btn.offsetHeight || 46]; }
+    function clamp(left, top) {
+      var sz = btnSize();
+      var maxL = Math.max(MARGIN, window.innerWidth - sz[0] - MARGIN);
+      var maxT = Math.max(MARGIN, window.innerHeight - sz[1] - MARGIN);
+      return [Math.min(Math.max(MARGIN, left), maxL), Math.min(Math.max(MARGIN, top), maxT)];
+    }
+    function place(left, top) {
+      var p = clamp(left, top);
+      lastLeft = p[0]; lastTop = p[1];
+      btn.style.left = p[0] + 'px';
+      btn.style.top = p[1] + 'px';
+      btn.style.right = 'auto';
+      btn.style.bottom = 'auto';
+    }
+    function savePos() {
+      try { localStorage.setItem(THEME_BTN_KEY, JSON.stringify({ left: lastLeft, top: lastTop })); } catch (e) {}
+    }
+
+    /* 初始位置：优先读取已保存位置；否则默认右侧中上方 */
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(THEME_BTN_KEY) || 'null'); } catch (e) {}
+    if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+      place(saved.left, saved.top);
+    } else {
+      var sz = btnSize();
+      place(window.innerWidth - sz[0] - 10, window.innerHeight * 0.36);
+    }
+
+    /* 长按不要弹出系统菜单（影响拖拽体验） */
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    btn.addEventListener('pointerdown', function (e) {
+      if (e.button && e.button !== 0) return;  /* 仅响应鼠标主键 */
+      dragging = true; moved = false;
+      startX = e.clientX; startY = e.clientY;
+      var rect = btn.getBoundingClientRect();
+      baseLeft = rect.left; baseTop = rect.top;
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!moved && Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+      moved = true;
+      place(baseLeft + dx, baseTop + dy);
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      btn.classList.remove('dragging');
+      pointerHandled = true;
+      if (moved) {
+        savePos();  /* 拖拽结束：记住新位置 */
+      } else {
+        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');  /* 未拖动 = 点击切换 */
+      }
+    }
+    btn.addEventListener('pointerup', endDrag);
+    btn.addEventListener('pointercancel', function () {
+      dragging = false;
+      btn.classList.remove('dragging');
+    });
+
+    /* 键盘（Enter / Space）激活时走 click；指针事件已处理过则跳过 */
     btn.addEventListener('click', function () {
+      if (pointerHandled) { pointerHandled = false; return; }
       applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
     });
+
+    /* 视口尺寸变化：把按钮收回可见区域 */
+    window.addEventListener('resize', function () { place(lastLeft, lastTop); });
+
     /* 未手动选择过主题时，跟随系统深浅色变化 */
     var stored = null;
     try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
