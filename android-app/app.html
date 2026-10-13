@@ -914,6 +914,7 @@
 </head>
 <body>
 <header>
+  <div class="section-title" id="pageTitle" style="display:none">任务统计</div>
   <div class="head-row"></div>
   <div class="acc-manage-row" id="accManageRow">
     <nav class="tab-bar" id="tabBar"></nav>
@@ -1561,6 +1562,8 @@
     if (bar) bar.style.display = hideTop ? 'none' : '';
     var row = document.getElementById('accManageRow');
     if (row) row.style.display = hideTop ? 'none' : '';
+    var pageTitleEl = document.getElementById('pageTitle');
+    if (pageTitleEl) pageTitleEl.style.display = hideTop ? 'none' : '';
   }
 
   function renderTabs() {
@@ -1632,12 +1635,6 @@
     });
     var main = document.getElementById('main');
     main.innerHTML = '';
-
-    /* 任务页居中大标题 */
-    var pageTitle = document.createElement('div');
-    pageTitle.className = 'section-title';
-    pageTitle.textContent = '任务统计';
-    main.appendChild(pageTitle);
 
     acc.categories.forEach(function (cat) {
       var section = document.createElement('section');
@@ -4200,25 +4197,27 @@
 
   function bindHeaderButtons() {
     var installBtn = document.getElementById('installBtn');
-    /* App 版顶栏无按钮：安装引导已移除，登录入口在「我的」页 */
-    if (!installBtn) return;
-    installBtn.addEventListener('click', function () {
-      if (installBtn.dataset.standalone) { toast('当前已从桌面图标运行'); return; }
-      var b = detectBrowser();
-      /* 鸿蒙浏览器不弹原生安装框（部分版本无响应），直接给图文指引 */
-      if (deferredPrompt && !b.isHarmony) {
-        try {
-          deferredPrompt.prompt();
-          Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
-            deferredPrompt = null;
-          });
-          return;
-        } catch (e) {
-          /* 原生安装不可用时走指引 */
+    /* App 版顶栏无安装按钮：安装引导已移除，登录入口在「我的」页。
+       仅当存在 installBtn 时才绑定，缺失则跳过但不中断后续按钮的绑定 */
+    if (installBtn) {
+      installBtn.addEventListener('click', function () {
+        if (installBtn.dataset.standalone) { toast('当前已从桌面图标运行'); return; }
+        var b = detectBrowser();
+        /* 鸿蒙浏览器不弹原生安装框（部分版本无响应），直接给图文指引 */
+        if (deferredPrompt && !b.isHarmony) {
+          try {
+            deferredPrompt.prompt();
+            Promise.resolve(deferredPrompt.userChoice).catch(function () {}).then(function () {
+              deferredPrompt = null;
+            });
+            return;
+          } catch (e) {
+            /* 原生安装不可用时走指引 */
+          }
         }
-      }
-      openInstallHelp();
-    });
+        openInstallHelp();
+      });
+    }
 
     var authBtn = document.getElementById('authBtn');
     authBtn.addEventListener('click', function () {
