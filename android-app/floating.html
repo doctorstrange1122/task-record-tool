@@ -304,6 +304,14 @@
   }
   .fp-task-item:active { background: var(--chip-press); }
   .fp-task-item.unset { opacity: .55; }
+  /* 已记录（有次数）的任务项：跟随主题色高亮，与完成状态一致 */
+  .fp-task-item.done {
+    background: var(--accent);
+    border-radius: 10px;
+  }
+  .fp-task-item.done .fp-task-name,
+  .fp-task-item.done .fp-task-sub { color: #fff; }
+  .fp-task-item.done .fp-task-count { background: rgba(255,255,255,.28); color: #fff; }
   .fp-task-name {
     flex: 1;
     font-size: 14px;
@@ -744,7 +752,7 @@
       tasks.forEach(function (t) {
         var row = document.createElement('button');
         row.type = 'button';
-        row.className = 'fp-task-item';
+        row.className = 'fp-task-item' + (t.count > 0 ? ' done' : '');
         var nameWrap = document.createElement('span');
         nameWrap.className = 'fp-task-name';
         nameWrap.textContent = t.name;
