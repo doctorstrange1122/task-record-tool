@@ -122,7 +122,7 @@
     padding: calc(9px + env(safe-area-inset-top)) 12px 7px;
   }
   h1 {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     text-align: center;
     letter-spacing: .5px;
@@ -227,24 +227,41 @@
     color: var(--muted);
     text-align: center;
   }
+  .clip-input {
+    width: 100%;
+    min-height: 76px;
+    border: 1px solid var(--border);
+    background: var(--field-bg);
+    border-radius: 12px;
+    padding: 11px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    font-family: inherit;
+  }
+  .clip-input:focus { border-color: var(--accent); background: var(--card); }
   .clip-actions {
     display: flex;
+    gap: 8px;
     margin-top: 10px;
-    border-radius: 12px;
-    overflow: hidden;
   }
   .clip-actions button {
     flex: 1;
     border: none;
-    background: var(--accent);
-    color: #fff;
-    font-size: 15px;
-    font-weight: 700;
-    padding: 12px 0;
+    border-radius: 10px;
+    padding: 10px 0;
+    font-size: 13.5px;
+    font-weight: 600;
     cursor: pointer;
-    transition: background .15s;
+    color: #fff;
+    transition: opacity .15s, background .15s;
   }
-  .clip-actions button:active { background: var(--accent-deep); }
+  .clip-actions button:active { opacity: .82; }
+  .clip-actions .clip-paste { background: var(--accent); }
+  .clip-actions .clip-save { background: var(--green); }
+  .clip-actions .clip-clear { background: var(--chip-bg); color: var(--text); }
   .clip-list { margin-top: 12px; }
   .clip-item {
     display: flex;
@@ -263,10 +280,11 @@
   .clip-text {
     flex: 1;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 1.3;
     word-break: break-all;
+    white-space: pre-wrap;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -891,6 +909,7 @@
   var CLIP_EXPIRE_MS = 48 * 3600 * 1000; /* 记录保存 48 小时 */
   var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
   var clipboardView = false;             /* 当前是否显示剪贴板面板 */
+  var clipDraft = '';                     /* 剪贴板输入框草稿：切走 tab 再回来不丢失 */
   var TAB_KEY = 'taskRecordTool.tab';     /* 记住上次停留的 tab */
 
   /* 保存当前激活 tab（剪贴板 / 某个账号）到本地 */
@@ -966,14 +985,36 @@
     return Promise.reject(new Error('clipboard api unavailable'));
   }
 
-  function onClipSync() {
+  /* 「粘贴」按钮：尝试把系统剪贴板内容读入输入框；
+     读不到（浏览器限制 / 权限 / 非文本）时聚焦输入框，提示长按手动粘贴 */
+  function onClipPaste() {
+    var ta = document.getElementById('clipInput');
     readSystemClipboard().then(function (t) {
       t = (t || '').trim();
-      if (!t) { toast('系统剪贴板为空'); return; }
-      saveClipRecord(t);
+      if (ta) { ta.value = t; clipDraft = t; ta.focus(); }
+      if (t) { toast('已粘贴到输入框'); }
+      else { toast('未能读取剪贴板，请长按输入框手动粘贴'); }
     }).catch(function () {
-      toast('无法读取系统剪贴板，请检查浏览器剪贴板权限');
+      if (ta) ta.focus();
+      toast('未能读取剪贴板，请长按输入框手动粘贴');
     });
+  }
+
+  /* 「保存」按钮：把输入框内容存入剪贴板记录 */
+  function onClipSave() {
+    var ta = document.getElementById('clipInput');
+    var v = ta ? (ta.value || '').trim() : '';
+    if (!v) { toast('请先输入或粘贴内容'); return; }
+    clipDraft = '';
+    if (ta) { ta.value = ''; ta.blur(); }
+    saveClipRecord(v);
+  }
+
+  /* 「清空」按钮：清空输入框 */
+  function onClipClear() {
+    var ta = document.getElementById('clipInput');
+    clipDraft = '';
+    if (ta) { ta.value = ''; ta.focus(); }
   }
 
   function saveClipRecord(text) {
@@ -1010,18 +1051,40 @@
     head.appendChild(title);
     panel.appendChild(head);
 
+    var input = document.createElement('textarea');
+    input.id = 'clipInput';
+    input.className = 'clip-input';
+    input.rows = 3;
+    input.placeholder = '粘贴或输入要保存的内容';
+    input.value = clipDraft;
+    input.addEventListener('input', function () { clipDraft = input.value; });
+    panel.appendChild(input);
+
     var actions = document.createElement('div');
     actions.className = 'clip-actions';
-    var syncBtn = document.createElement('button');
-    syncBtn.type = 'button';
-    syncBtn.textContent = '同步剪贴板';
-    syncBtn.addEventListener('click', onClipSync);
-    actions.appendChild(syncBtn);
+    var pasteBtn = document.createElement('button');
+    pasteBtn.type = 'button';
+    pasteBtn.className = 'clip-paste';
+    pasteBtn.textContent = '粘贴';
+    pasteBtn.addEventListener('click', onClipPaste);
+    actions.appendChild(pasteBtn);
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'clip-save';
+    saveBtn.textContent = '保存';
+    saveBtn.addEventListener('click', onClipSave);
+    actions.appendChild(saveBtn);
+    var clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'clip-clear';
+    clearBtn.textContent = '清空';
+    clearBtn.addEventListener('click', onClipClear);
+    actions.appendChild(clearBtn);
     panel.appendChild(actions);
 
     var hint = document.createElement('div');
     hint.className = 'clip-hint';
-    hint.textContent = '自动保存最近一条剪贴板内容';
+    hint.textContent = '「粘贴」尝试读取系统剪贴板；若读取失败，请长按输入框选择「粘贴」，再点「保存」';
     panel.appendChild(hint);
 
     var list = document.createElement('div');
