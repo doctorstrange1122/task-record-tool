@@ -202,6 +202,28 @@
     color: var(--muted);
     margin: -8px 0 14px;
   }
+  /* 说明 + 刷新按钮同一行 */
+  .clip-note-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -8px 0 14px;
+  }
+  .clip-note-row .clip-note { flex: 1 1 auto; margin: 0; }
+  .clip-refresh {
+    flex: 0 0 auto;
+    border: none;
+    background: var(--chip-bg);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .clip-refresh:active { background: var(--chip-press); }
+  .clip-refresh:disabled { opacity: .55; }
   .clip-input-row {
     display: flex;
     gap: 8px;
@@ -1056,11 +1078,17 @@
     return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
   }
 
-  /* 清理过期记录，返回是否有删除 */
+  /* 清理过期记录；并限制总条数——防止整包数据无限膨胀，超过服务端 512KB 上限会导致同步整包失败 */
+  var CLIP_KEEP_MAX = 60;
   function pruneClipboards() {
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
-    data.clipboards = data.clipboards.filter(clipFresh);
+    var list = data.clipboards.filter(clipFresh);
+    if (list.length > CLIP_KEEP_MAX) {
+      list.sort(function (a, b) { return b.at - a.at; });
+      list = list.slice(0, CLIP_KEEP_MAX);
+    }
+    data.clipboards = list;
     return data.clipboards.length !== before;
   }
 
@@ -1186,6 +1214,7 @@
     pruneClipboards();
     data.clipboards.unshift({ id: genId(), text: text, at: Date.now() });
     save();
+    scheduleSync(150); /* 剪贴板：缩短防抖，尽快上传，其他设备更快拉到 */
     renderClipboardList();
     toast('已保存到剪贴板记录');
   }
@@ -1203,10 +1232,31 @@
     panel.className = 'category';
 
     /* 页面标题「跨设备剪贴板」由顶部标题容器统一承载（与「任务统计」格式、等级一致），此处不再重复 */
+    var noteRow = document.createElement('div');
+    noteRow.className = 'clip-note-row';
     var clipNote = document.createElement('div');
     clipNote.className = 'clip-note';
     clipNote.textContent = '保存 7 天 · 每页最多 15 条';
-    panel.appendChild(clipNote);
+    noteRow.appendChild(clipNote);
+    var refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'clip-refresh';
+    refreshBtn.textContent = '刷新';
+    refreshBtn.addEventListener('click', function () {
+      if (!auth) { toast('登录后才可跨设备同步'); return; }
+      var before = auth.lastSync;
+      refreshBtn.disabled = true;
+      pullData(true).then(function () {
+        renderClipboardList();
+        refreshBtn.disabled = false;
+        toast(auth.lastSync !== before ? '已同步最新记录' : '已是最新');
+      }, function () {
+        refreshBtn.disabled = false;
+        toast('刷新失败，请检查网络');
+      });
+    });
+    noteRow.appendChild(refreshBtn);
+    panel.appendChild(noteRow);
 
     /* 输入框（单行高）+ 右侧放大按钮 */
     var inputRow = document.createElement('div');
@@ -1456,6 +1506,9 @@
           return pullData(true).then(function () {
             if (!quiet) toast('检测到其他设备的更新，已加载最新数据');
           });
+        } else if (!quiet) {
+          /* 其余失败（如 413 数据过大）以前被静默忽略，导致"改了却同步不过去"，这里给出提示 */
+          toast(result.error || '同步失败，请稍后重试');
         }
       });
     }).catch(function () { /* 离线时静默失败，下次变更重试 */ });
@@ -2179,6 +2232,8 @@
     }
     saveActiveTab();
     render();
+    /* 进入剪贴板页：立即拉一次云端，尽快看到其他设备保存的内容 */
+    if (tab === 'clip' && auth && apiConfigured()) pullData(true);
   }
 
   function renderBottomNav() {
@@ -4258,6 +4313,18 @@
   }, 30000);
   /* 提醒单独用更短的轮询：即使系统闹钟被系统延后，页面在前台时也能尽快弹出（与云同步 30s 频率解耦） */
   setInterval(checkReminders, 10000);
+  /* 剪贴板页在前台可见时高频拉取（3s）：近实时看到其他设备保存的内容 */
+  setInterval(function () {
+    if (document.hidden || !clipboardView) return;
+    if (auth && apiConfigured()) pullData(true);
+  }, 3000);
+  /* 窗口重新获得焦点 / 从后退缓存恢复：立即拉一次，避免 visibilitychange 漏网 */
+  window.addEventListener('focus', function () {
+    if (auth && apiConfigured()) pullData(true);
+  });
+  window.addEventListener('pageshow', function () {
+    if (auth && apiConfigured()) pullData(true);
+  });
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
       checkCycles();
