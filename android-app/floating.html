@@ -551,6 +551,18 @@
       });
     }).catch(function () { return { ok: false, error: '网络异常，请检查网络' }; });
   }
+  /* 轻量探测：只请求版本号，发现云端比本地新才拉全量 */
+  function pollMeta() {
+    if (!auth || !apiConfigured() || document.hidden) return;
+    apiFetch('/api/meta').then(function (res) {
+      if (res.status === 401) { auth = null; saveAuth(); return; }
+      return res.json().then(function (r) {
+        if (res.ok && r.updated_at && r.updated_at > (auth.lastSync || 0)) {
+          pullData(true);
+        }
+      });
+    }).catch(function () { /* 离线静默 */ });
+  }
 
   /* ================= 周期逻辑（与主界面一致） ================= */
   function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
@@ -871,11 +883,19 @@
       data = loadData();
       render();
       syncRemindersToNative(); /* 主界面可能改过提醒/周期：校准系统闹钟 */
+      pollMeta(); /* 面板打开即探测一次云端是否有更新 */
     }
   });
 
+  /* 面板可见时高频探测（3s）：只请求版本号，发现更新才拉全量；面板关闭后 document.hidden=true 自动停 */
+  setInterval(function () {
+    if (document.hidden) return;
+    pollMeta();
+  }, 3000);
+
   render();
   syncRemindersToNative(); /* 面板打开即校准一次 */
+  pollMeta(); /* 打开面板即探测一次 */
 })();
 </script>
 </body>
