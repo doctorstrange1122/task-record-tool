@@ -247,6 +247,15 @@
     min-height: 240px;
     resize: none;
   }
+  /* 放大编辑弹窗：纵向弹性布局，输入框撑满标题与按钮之间的全部空间 */
+  .sheet.clip-edit {
+    display: flex;
+    flex-direction: column;
+    height: min(72vh, 620px);
+  }
+  .sheet.clip-edit h3 { flex: 0 0 auto; }
+  .sheet.clip-edit .clip-input { flex: 1 1 auto; min-height: min(240px, 38vh); }
+  .sheet.clip-edit .sheet-actions { flex: 0 0 auto; margin-top: 12px; }
   .clip-input:focus { border-color: var(--accent); background: var(--card); }
   .clip-expand {
     flex: 0 0 auto;
@@ -1049,6 +1058,7 @@
   /* 放大输入框：弹出大编辑弹窗（不在原界面放大），完成后写回小输入框 */
   function openClipExpandSheet() {
     openModal(function (sheet, close) {
+      sheet.classList.add('clip-edit');
       var h = document.createElement('h3');
       h.textContent = '编辑内容';
       sheet.appendChild(h);
