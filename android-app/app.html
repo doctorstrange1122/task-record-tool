@@ -1190,10 +1190,7 @@
     var panel = document.createElement('section');
     panel.className = 'category';
 
-    var head = document.createElement('div');
-    head.className = 'section-title';
-    head.textContent = '跨设备剪贴板';
-    panel.appendChild(head);
+    /* 页面标题「跨设备剪贴板」由顶部标题容器统一承载（与「任务统计」格式、等级一致），此处不再重复 */
     var clipNote = document.createElement('div');
     clipNote.className = 'clip-note';
     clipNote.textContent = '保存 7 天 · 每页最多 15 条';
@@ -1537,8 +1534,16 @@
     if (bar) bar.style.display = hideTop ? 'none' : '';
     var row = document.getElementById('accManageRow');
     if (row) row.style.display = hideTop ? 'none' : '';
+    /* 页面标题：任务页 / 剪贴板页各用自己的标题，控件同源（同一容器、同一等级）；「我的」页无标题 */
     var pageTitleEl = document.getElementById('pageTitle');
-    if (pageTitleEl) pageTitleEl.style.display = hideTop ? 'none' : '';
+    if (pageTitleEl) {
+      if (meView) {
+        pageTitleEl.style.display = 'none';
+      } else {
+        pageTitleEl.style.display = '';
+        pageTitleEl.textContent = clipboardView ? '跨设备剪贴板' : '任务统计';
+      }
+    }
   }
 
   function renderTabs() {
@@ -2194,6 +2199,17 @@
     if (ACCENTS.indexOf(name) < 0) name = 'blue';
     document.documentElement.setAttribute('data-accent', name);
     try { localStorage.setItem(ACCENT_KEY, name); } catch (e) {}
+    syncStatusBar();
+  }
+
+  /* 状态栏颜色跟随主题色：App 内通过原生桥设置（网页版无此桥，静默跳过） */
+  function syncStatusBar() {
+    try {
+      if (!window.AndroidHost || typeof AndroidHost.setStatusBarColor !== 'function') return;
+      var c = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+      c = (c || '').trim();
+      if (c) AndroidHost.setStatusBarColor(c);
+    } catch (e) {}
   }
   /* 深浅色模式：light / dark / ''（跟随系统） */
   function themeMode() {
@@ -2209,6 +2225,7 @@
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute('content', dark ? '#17191c' : '#ffffff');
+    syncStatusBar();
   }
   /* 未手动选择深浅色时，跟随系统变化 */
   function initSystemThemeFollow() {
@@ -2219,6 +2236,7 @@
       document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
       var m = document.querySelector('meta[name="theme-color"]');
       if (m) m.setAttribute('content', e.matches ? '#17191c' : '#ffffff');
+      syncStatusBar();
     };
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else if (mq.addListener) mq.addListener(onChange);
@@ -4026,6 +4044,7 @@
     try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute('content', t === 'dark' ? '#17191c' : '#ffffff');
+    syncStatusBar();
   }
   function initThemeToggle() {
     var btn = document.getElementById('themeToggle');
@@ -4206,6 +4225,7 @@
   if (pruneClipboards()) save();
   render();
   updateAuthUI();
+  syncStatusBar();
   checkReminders();
   syncRemindersToNative(); /* 启动即对齐一次系统闹钟（含开机后原生补排的场景） */
   checkRemindFromIntent(); /* 从系统通知点击进入时弹出对应提醒 */
@@ -4228,6 +4248,7 @@
       /* 悬浮窗（另一个 WebView）可能刚写入过记录 / 任务计数：重新读取本机数据 */
       data = loadData();
       render();
+      syncStatusBar(); /* 回到前台时重新同步状态栏主题色 */
       syncRemindersToNative(); /* 悬浮窗可能改过周期起点：重排系统闹钟 */
       if (auth) pullData(true);
     } else if (syncTimer) {
