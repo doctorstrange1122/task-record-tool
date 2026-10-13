@@ -1475,6 +1475,7 @@
   function clearAuth(msg) {
     auth = null;
     saveAuth();
+    closeRealtime(); /* 退出登录：断开实时推送与重连 */
     updateAuthUI();
     render();
     if (msg) toast(msg);
@@ -1551,6 +1552,70 @@
     }).catch(function () { /* 离线静默 */ });
   }
 
+  /* ================= 实时推送（WebSocket）+ 自动降级 =================
+     优先用 WebSocket：连的是 pages.dev（不是 workers.dev），服务端通过内部绑定把变更推过来。
+     连不上或断开时，rtActive=false，自动回退到 /api/meta 短轮询，保证不依赖 WS 也能同步。 */
+  var rtWs = null;
+  var rtActive = false;      /* WebSocket 处于可用状态 */
+  var rtRetry = 0;
+  var rtRetryTimer = null;
+  var rtPingTimer = null;
+
+  function connectRealtime() {
+    if (!auth || !apiConfigured()) return;
+    if (rtWs && (rtWs.readyState === 0 || rtWs.readyState === 1)) return;
+    var url;
+    try {
+      url = API_BASE.replace(/^http/, 'ws') + '/api/ws?token=' + encodeURIComponent(auth.token);
+    } catch (e) { return; }
+    try {
+      rtWs = new WebSocket(url);
+    } catch (e) {
+      scheduleRealtimeRetry();
+      return;
+    }
+    rtWs.onopen = function () {
+      rtRetry = 0;
+      rtActive = true;
+      if (rtPingTimer) clearInterval(rtPingTimer);
+      /* 心跳保活：避免被中间设备判定为空闲连接 */
+      rtPingTimer = setInterval(function () {
+        try { if (rtWs && rtWs.readyState === 1) rtWs.send('{"type":"ping"}'); } catch (e) {}
+      }, 25000);
+    };
+    rtWs.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data || '{}');
+        if (m && m.type === 'changed') pullData(true); /* 其他设备写入 → 立刻拉取 */
+      } catch (e) {}
+    };
+    rtWs.onclose = function () {
+      rtActive = false;
+      if (rtPingTimer) { clearInterval(rtPingTimer); rtPingTimer = null; }
+      rtWs = null;
+      scheduleRealtimeRetry(); /* 退避重连；期间由轮询兜底 */
+    };
+    rtWs.onerror = function () { /* 交由 onclose 处理 */ };
+  }
+
+  /* 退避重连：1s → 2s → 4s → 8s → 16s → 30s（上限） */
+  function scheduleRealtimeRetry() {
+    if (rtRetryTimer) clearTimeout(rtRetryTimer);
+    var delay = Math.min(30000, 1000 * Math.pow(2, Math.min(rtRetry, 5)));
+    rtRetry++;
+    rtRetryTimer = setTimeout(connectRealtime, delay);
+  }
+
+  function closeRealtime() {
+    rtActive = false;
+    if (rtPingTimer) { clearInterval(rtPingTimer); rtPingTimer = null; }
+    if (rtRetryTimer) { clearTimeout(rtRetryTimer); rtRetryTimer = null; }
+    if (rtWs) {
+      try { rtWs.onclose = null; rtWs.close(); } catch (e) {}
+      rtWs = null;
+    }
+  }
+
   function doAuth(mode, username, password, nickname) {
     return apiFetch(mode === 'login' ? '/api/login' : '/api/register', {
       method: 'POST',
@@ -1560,6 +1625,7 @@
         if (!res.ok) throw new Error(result.error || '操作失败，请重试');
         auth = { token: result.token, username: result.username, nickname: result.nickname || result.username, lastSync: null };
         saveAuth();
+        connectRealtime(); /* 登录成功即建立实时推送 */
         updateAuthUI();
         render();
         if (mode === 'register') {
@@ -4314,6 +4380,7 @@
   if (auth && apiConfigured()) {
     /* 保持登录状态：自动拉取云端最新数据 */
     pullData(false);
+    connectRealtime(); /* 建立实时推送长连接（失败自动降级为轮询） */
   }
   setInterval(function () {
     checkCycles();
@@ -4322,18 +4389,18 @@
       save();
       if (clipboardView) renderClipboardList();
     }
-    if (auth) pollMeta(); /* 轻量探测：仅当云端有更新时才拉全量 */
+    if (auth) pollMeta(); /* 兜底探测：WebSocket 不可用时的最后保险 */
   }, 30000);
   /* 提醒单独用更短的轮询：即使系统闹钟被系统延后，页面在前台时也能尽快弹出（与云同步 30s 频率解耦） */
   setInterval(checkReminders, 10000);
-  /* 剪贴板页在前台可见时高频探测（3s）：只请求版本号，发现更新才拉全量，近实时看到其他设备的内容 */
+  /* 剪贴板页在前台可见时高频探测（3s）：仅在 WebSocket 不可用时兜底 */
   setInterval(function () {
-    if (document.hidden || !clipboardView) return;
+    if (rtActive || document.hidden || !clipboardView) return;
     pollMeta();
   }, 3000);
-  /* 其他页面前台时低频探测（15s） */
+  /* 其他页面前台时低频探测（15s）：仅在 WebSocket 不可用时兜底 */
   setInterval(function () {
-    if (document.hidden || clipboardView) return;
+    if (rtActive || document.hidden || clipboardView) return;
     pollMeta();
   }, 15000);
   /* 窗口重新获得焦点 / 从后退缓存恢复：立即拉一次，避免 visibilitychange 漏网 */
@@ -4353,6 +4420,7 @@
       syncStatusBar(); /* 回到前台时重新同步状态栏主题色 */
       syncRemindersToNative(); /* 悬浮窗可能改过周期起点：重排系统闹钟 */
       if (auth) pullData(true);
+      connectRealtime(); /* 回到前台：确保实时推送连接在线（系统可能在后台断开） */
     } else if (syncTimer) {
       /* 切到后台：立即上传待同步数据，避免防抖期内被杀掉 */
       clearTimeout(syncTimer);
