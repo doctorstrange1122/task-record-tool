@@ -233,9 +233,12 @@
   .fp-rec-del:active { color: var(--danger); }
 
   /* ---------- 任务 tab ---------- */
-  .fp-acc-row { margin-bottom: 10px; }
-  .fp-acc-select {
+  .fp-acc-row { position: relative; margin-bottom: 10px; }
+  .fp-acc-toggle {
     width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     border: 1px solid var(--border);
     background: var(--field-bg);
     border-radius: 10px;
@@ -243,8 +246,42 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--text);
-    outline: none;
+    cursor: pointer;
+    text-align: left;
   }
+  .fp-acc-toggle .caret {
+    font-size: 13px;
+    color: var(--muted);
+    transition: transform .15s ease;
+  }
+  .fp-acc-toggle.open .caret { transform: rotate(180deg); }
+  .fp-acc-pop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.14);
+    overflow: hidden;
+    display: none;
+  }
+  .fp-acc-pop.show { display: block; }
+  .fp-acc-opt {
+    display: block;
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 11px 12px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .fp-acc-opt:active { background: var(--chip-press); }
+  .fp-acc-opt.active { color: var(--accent); font-weight: 700; }
   .fp-cat-name {
     font-size: 12px;
     color: var(--muted);
@@ -656,23 +693,40 @@
       return;
     }
 
-    /* 账号下拉栏 */
+    /* 账号下拉栏（自定义，支持再次点击收起） */
     var accRow = document.createElement('div');
     accRow.className = 'fp-acc-row';
-    var sel = document.createElement('select');
-    sel.className = 'fp-acc-select';
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'fp-acc-toggle';
+    var tName = document.createElement('span');
+    tName.textContent = (data.accounts.filter(function (a) { return a.id === viewAccountId; })[0] || data.accounts[0]).name;
+    var caret = document.createElement('span');
+    caret.className = 'caret';
+    caret.textContent = '▾';
+    toggle.appendChild(tName);
+    toggle.appendChild(caret);
+    var pop = document.createElement('div');
+    pop.className = 'fp-acc-pop';
     data.accounts.forEach(function (a) {
-      var opt = document.createElement('option');
-      opt.value = a.id;
+      var opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'fp-acc-opt' + (a.id === viewAccountId ? ' active' : '');
       opt.textContent = a.name;
-      if (a.id === viewAccountId) opt.selected = true;
-      sel.appendChild(opt);
+      opt.addEventListener('click', function (e) {
+        e.stopPropagation();
+        viewAccountId = a.id;
+        render();
+      });
+      pop.appendChild(opt);
     });
-    sel.addEventListener('change', function () {
-      viewAccountId = sel.value;
-      render();
+    accRow.appendChild(toggle);
+    accRow.appendChild(pop);
+    toggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = pop.classList.toggle('show');
+      toggle.classList.toggle('open', open);
     });
-    accRow.appendChild(sel);
     body.appendChild(accRow);
 
     var acc = data.accounts.filter(function (a) { return a.id === viewAccountId; })[0] || data.accounts[0];
