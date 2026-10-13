@@ -292,7 +292,7 @@
     border: none;
     border-radius: 0;
     padding: 10px 0;
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     color: #fff;
@@ -300,9 +300,11 @@
   }
   .clip-actions button:active { opacity: .82; }
   .clip-actions button + button { border-left: 1px solid rgba(125, 135, 145, .45); }
-  .clip-actions .clip-paste { background: var(--accent); }
-  .clip-actions .clip-save { background: var(--green); }
+  .clip-actions .clip-paste { background: var(--chip-bg); color: var(--text); }
   .clip-actions .clip-clear { background: var(--chip-bg); color: var(--text); }
+  .clip-actions .clip-submit { background: var(--accent); }
+  .clip-actions .clip-sync { background: var(--green); }
+  .clip-actions .clip-save { background: var(--green); }
   .clip-list { margin-top: 12px; }
   .clip-item {
     display: flex;
@@ -995,10 +997,17 @@
   }
 
   /* 清理过期记录，返回是否有删除 */
+  /* 清理过期记录；并限制总条数——防止整包超过服务端 512KB 上限导致同步整体失败 */
+  var CLIP_KEEP_MAX = 60;
   function pruneClipboards() {
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
-    data.clipboards = data.clipboards.filter(clipFresh);
+    var list = data.clipboards.filter(clipFresh);
+    if (list.length > CLIP_KEEP_MAX) {
+      list.sort(function (a, b) { return b.at - a.at; });
+      list = list.slice(0, CLIP_KEEP_MAX);
+    }
+    data.clipboards = list;
     return data.clipboards.length !== before;
   }
 
@@ -1077,6 +1086,30 @@
     var ta = document.getElementById('clipInput');
     clipDraft = '';
     if (ta) { ta.value = ''; ta.focus(); }
+  }
+
+  /* 「提交」按钮：把输入框内容保存到记录，并提交到云端 */
+  function onClipSubmit() {
+    var ta = document.getElementById('clipInput');
+    var v = (clipDraft || '').trim();
+    if (!v) { toast('请先输入或粘贴内容'); return; }
+    clipDraft = '';
+    if (ta) { ta.value = ''; ta.blur(); }
+    saveClipRecord(v); /* 先落到本机记录 */
+    if (!auth || !apiConfigured()) { toast('已保存到记录（未登录，仅存本机）'); return; }
+    /* 取消防抖上传，改为显式提交一次，避免重复请求 */
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+    toast('已保存，正在提交…');
+    pushData(false).then(function (r) {
+      if (r && r.ok) toast('已保存并提交到云端');
+    });
+  }
+
+  /* 「同步」按钮：从云端拉取最新数据（并把本机剪贴板合并保留） */
+  function onClipSync() {
+    if (!auth || !apiConfigured()) { toast('登录后才可跨设备同步'); return; }
+    toast('正在同步…');
+    pullData(false, true).then(function () { renderClipboardList(); });
   }
 
   /* 放大输入框：弹出大编辑弹窗（不在原界面放大），完成后写回小输入框 */
@@ -1175,7 +1208,7 @@
     inputRow.appendChild(expandBtn);
     panel.appendChild(inputRow);
 
-    /* 三个按钮：同一容器，中间分隔线 */
+    /* 四个按钮：粘贴 ｜ 清空 ｜ 提交（存记录+上传云端） ｜ 同步（从云端拉取） */
     var actions = document.createElement('div');
     actions.className = 'clip-actions';
     var pasteBtn = document.createElement('button');
@@ -1184,18 +1217,24 @@
     pasteBtn.textContent = '粘贴';
     pasteBtn.addEventListener('click', onClipPaste);
     actions.appendChild(pasteBtn);
-    var saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'clip-save';
-    saveBtn.textContent = '保存';
-    saveBtn.addEventListener('click', onClipSave);
-    actions.appendChild(saveBtn);
     var clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'clip-clear';
     clearBtn.textContent = '清空';
     clearBtn.addEventListener('click', onClipClear);
     actions.appendChild(clearBtn);
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'clip-submit';
+    submitBtn.textContent = '提交';
+    submitBtn.addEventListener('click', onClipSubmit);
+    actions.appendChild(submitBtn);
+    var syncBtn = document.createElement('button');
+    syncBtn.type = 'button';
+    syncBtn.className = 'clip-sync';
+    syncBtn.textContent = '同步';
+    syncBtn.addEventListener('click', onClipSync);
+    actions.appendChild(syncBtn);
     panel.appendChild(actions);
 
     main.appendChild(panel);
@@ -1376,6 +1415,7 @@
   function clearAuth(msg) {
     auth = null;
     saveAuth();
+    closeRealtime(); /* 退出登录：断开实时推送与重连 */
     updateAuthUI();
     render();
     if (msg) toast(msg);
@@ -1392,47 +1432,131 @@
   }
 
   function pushData(quiet) {
-    if (!auth || !apiConfigured()) return Promise.resolve();
+    if (!auth || !apiConfigured()) return Promise.resolve({ ok: false, error: '未登录' });
     return apiFetch('/api/data', {
       method: 'PUT',
       body: JSON.stringify({ data: data, base: auth.lastSync || null })
     }).then(function (res) {
-      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return { ok: false, error: '登录已失效' }; }
       return res.json().then(function (result) {
         if (res.ok) {
           auth.lastSync = result.updated_at;
           saveAuth();
-        } else if (res.status === 409) {
+          return { ok: true };
+        }
+        if (res.status === 409) {
           /* 其他设备有新写入：拉取最新数据 */
           return pullData(true).then(function () {
             if (!quiet) toast('检测到其他设备的更新，已加载最新数据');
+            return { ok: false, error: '冲突' };
           });
         }
+        /* 其余失败（如 413 数据过大）以前被静默忽略，这里给出提示 */
+        if (!quiet) toast(result.error || '同步失败，请稍后重试');
+        return { ok: false, error: result.error || '同步失败' };
       });
-    }).catch(function () { /* 离线时静默失败，下次变更重试 */ });
+    }).catch(function () { return { ok: false, error: '网络异常' }; });
   }
 
-  function pullData(quiet) {
-    if (!auth || !apiConfigured()) return Promise.resolve();
+  function pullData(quiet, force) {
+    if (!auth || !apiConfigured()) return Promise.resolve({ ok: false, error: '未登录' });
     return apiFetch('/api/data').then(function (res) {
-      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return { ok: false, error: '登录已失效' }; }
       return res.json().then(function (result) {
         if (res.ok && result.data) {
           var serverAt = result.updated_at || 0;
-          if (!auth.lastSync || serverAt > auth.lastSync) {
+          var newer = serverAt > (auth.lastSync || 0);
+          if (force || newer) {
             suppressSync = true;
             data = result.data;
             pruneClipboards();
-            auth.lastSync = serverAt;
+            if (newer) auth.lastSync = serverAt;
             saveAuth();
             save();
             render();
             suppressSync = false;
-            if (!quiet) toast('已同步云端最新数据');
+            if (!quiet) toast(newer ? '已同步云端最新数据' : '已是最新');
+            return { ok: true, updated: newer };
           }
         }
+        return { ok: true, updated: false };
       });
-    }).catch(function () { /* 离线时静默失败 */ });
+    }).catch(function () { return { ok: false, error: '网络异常' }; });
+  }
+
+  /* 轻量探测：只请求版本号（几十字节），发现云端比本地新才拉全量 */
+  function pollMeta() {
+    if (!auth || !apiConfigured() || document.hidden) return;
+    apiFetch('/api/meta').then(function (res) {
+      if (res.status === 401) { clearAuth('登录已失效，请重新登录'); return; }
+      return res.json().then(function (r) {
+        if (res.ok && r.updated_at && r.updated_at > (auth.lastSync || 0)) {
+          pullData(true);
+        }
+      });
+    }).catch(function () { /* 离线静默 */ });
+  }
+
+  /* ================= 实时推送（WebSocket）+ 自动降级 =================
+     连的是 pages.dev（不是 workers.dev）；不可用时自动回退到 /api/meta 轮询 */
+  var rtWs = null;
+  var rtActive = false;
+  var rtRetry = 0;
+  var rtRetryTimer = null;
+  var rtPingTimer = null;
+
+  function connectRealtime() {
+    if (!auth || !apiConfigured()) return;
+    if (rtWs && (rtWs.readyState === 0 || rtWs.readyState === 1)) return;
+    var url;
+    try {
+      url = API_BASE.replace(/^http/, 'ws') + '/api/ws?token=' + encodeURIComponent(auth.token);
+    } catch (e) { return; }
+    try {
+      rtWs = new WebSocket(url);
+    } catch (e) {
+      scheduleRealtimeRetry();
+      return;
+    }
+    rtWs.onopen = function () {
+      rtRetry = 0;
+      rtActive = true;
+      if (rtPingTimer) clearInterval(rtPingTimer);
+      rtPingTimer = setInterval(function () {
+        try { if (rtWs && rtWs.readyState === 1) rtWs.send('{"type":"ping"}'); } catch (e) {}
+      }, 25000);
+    };
+    rtWs.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data || '{}');
+        if (m && m.type === 'changed') pullData(true);
+      } catch (e) {}
+    };
+    rtWs.onclose = function () {
+      rtActive = false;
+      if (rtPingTimer) { clearInterval(rtPingTimer); rtPingTimer = null; }
+      rtWs = null;
+      scheduleRealtimeRetry();
+    };
+    rtWs.onerror = function () { /* 交由 onclose 处理 */ };
+  }
+
+  /* 退避重连：1s → 2s → 4s → 8s → 16s → 30s（上限） */
+  function scheduleRealtimeRetry() {
+    if (rtRetryTimer) clearTimeout(rtRetryTimer);
+    var delay = Math.min(30000, 1000 * Math.pow(2, Math.min(rtRetry, 5)));
+    rtRetry++;
+    rtRetryTimer = setTimeout(connectRealtime, delay);
+  }
+
+  function closeRealtime() {
+    rtActive = false;
+    if (rtPingTimer) { clearInterval(rtPingTimer); rtPingTimer = null; }
+    if (rtRetryTimer) { clearTimeout(rtRetryTimer); rtRetryTimer = null; }
+    if (rtWs) {
+      try { rtWs.onclose = null; rtWs.close(); } catch (e) {}
+      rtWs = null;
+    }
   }
 
   function doAuth(mode, username, password, nickname) {
@@ -1444,6 +1568,7 @@
         if (!res.ok) throw new Error(result.error || '操作失败，请重试');
         auth = { token: result.token, username: result.username, nickname: result.nickname || result.username, lastSync: null };
         saveAuth();
+        connectRealtime(); /* 登录成功即建立实时推送 */
         updateAuthUI();
         render();
         if (mode === 'register') {
@@ -3698,6 +3823,7 @@
   if (auth && apiConfigured()) {
     /* 保持登录状态：自动拉取云端最新数据 */
     pullData(false);
+    connectRealtime(); /* 建立实时推送长连接（失败自动降级为轮询） */
   }
   setInterval(function () {
     checkCycles();
@@ -3706,12 +3832,23 @@
       save();
       if (clipboardView) renderClipboardList();
     }
-    if (auth) pullData(true);
+    if (auth) pollMeta(); /* 兜底探测：WebSocket 不可用时的最后保险 */
   }, 30000);
+  /* 剪贴板页前台可见时探测（3s）：仅 WebSocket 不可用时兜底 */
+  setInterval(function () {
+    if (rtActive || document.hidden || !clipboardView) return;
+    pollMeta();
+  }, 3000);
+  /* 其他页面前台时低频探测（15s） */
+  setInterval(function () {
+    if (rtActive || document.hidden || clipboardView) return;
+    pollMeta();
+  }, 15000);
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) {
       checkCycles();
       if (auth) pullData(true);
+      connectRealtime(); /* 回到前台：确保实时推送连接在线 */
     } else if (syncTimer) {
       /* 切到后台：立即上传待同步数据，避免防抖期内被杀掉 */
       clearTimeout(syncTimer);
