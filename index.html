@@ -10,6 +10,20 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-title" content="任务管理" />
 <meta name="mobile-web-app-capable" content="yes" />
+<script>
+  /* 主题初始化：先于渲染执行，避免深浅色闪烁；无手动选择时跟随系统 */
+  (function () {
+    try {
+      var t = localStorage.getItem('taskRecordTool.theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', t === 'dark' ? '#17191c' : '#ffffff');
+    } catch (e) {}
+  })();
+</script>
 <style>
   :root {
     --gray: #5c6672;
@@ -23,6 +37,59 @@
     --danger: #e03131;
     --border: #e9ecef;
     --radius: 14px;
+    /* 语义化表面色（深色模式整体覆盖） */
+    --header-bg: rgba(255, 255, 255, .94);   /* 顶栏半透明底 */
+    --chip-bg: #f1f3f5;                       /* 扁平控件底（tab / 图标按钮 / 计数按钮等） */
+    --chip-press: #e9ecef;                    /* 扁平控件按压态 */
+    --field-bg: #f8f9fa;                      /* 输入框 / 分段按钮底 */
+    --press-bg: #f8f9fa;                      /* 列表项按压态 */
+    --divider: #f1f3f5;                       /* 细分隔线 */
+    --ok-bg: #edfaf0;                         /* 登录成功 pill 底 */
+    --ok-border: #a9d8b6;
+    --dashed-border: #97a1ac;                 /* 添加类虚线按钮边框 */
+    --dashed-text: #495057;                   /* 添加类虚线按钮文字 */
+    --dashed-hover: #eef1f4;                  /* 添加类虚线按钮按压态 */
+    --unset-bg: #c3cad2;                      /* 未设置任务按钮 */
+    --unset-text: #454e57;
+    --unset-border: #8f99a3;
+    --bell-bg: rgba(255, 255, 255, .92);      /* 任务按钮内铃铛底 */
+    --bell-text: #495057;
+    --danger-bg: #fff0f0;                     /* 危险按钮淡红底 */
+    --danger-press: #ffe3e3;                  /* 删除按钮按压淡红底 */
+    --mask-bg: rgba(15, 23, 42, .45);         /* 弹窗遮罩 */
+    --toast-bg: rgba(33, 37, 41, .9);         /* 轻提示 */
+    --toast-text: #fff;
+  }
+  /* ---------- 深色模式 ---------- */
+  :root[data-theme="dark"] {
+    --bg: #17191c;
+    --card: #22262b;
+    --text: #e9ecef;
+    --muted: #9ba1a9;
+    --accent-deep: #1864ab;
+    --danger: #ff6b6b;
+    --border: #343a40;
+    --header-bg: rgba(24, 27, 31, .94);
+    --chip-bg: #2c3136;
+    --chip-press: #3a4147;
+    --field-bg: #262b30;
+    --press-bg: #2c3136;
+    --divider: #2c3136;
+    --ok-bg: rgba(47, 158, 68, .16);
+    --ok-border: rgba(47, 158, 68, .48);
+    --dashed-border: #5c6672;
+    --dashed-text: #c8cdd3;
+    --dashed-hover: #2c3136;
+    --unset-bg: #3a4147;
+    --unset-text: #c8cdd3;
+    --unset-border: #5c6672;
+    --bell-bg: rgba(30, 34, 38, .92);
+    --bell-text: #f1f3f5;
+    --danger-bg: rgba(255, 107, 107, .14);
+    --danger-press: rgba(255, 107, 107, .2);
+    --mask-bg: rgba(0, 0, 0, .62);
+    --toast-bg: rgba(233, 236, 239, .94);
+    --toast-text: #1a1d21;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
   /* 仅表单控件允许选中文本，便于输入与编辑 */
@@ -42,7 +109,7 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: rgba(255, 255, 255, .94);
+    background: var(--header-bg);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
@@ -81,8 +148,8 @@
   #authBtn { justify-self: end; max-width: 36vw; }
   #authBtn.logged {
     color: var(--green);
-    border-color: #a9d8b6;
-    background: #edfaf0;
+    border-color: var(--ok-border);
+    background: var(--ok-bg);
   }
   #authBtn.logged::before {
     content: '';
@@ -112,7 +179,7 @@
   .tab {
     flex: 0 0 auto;
     border: 1px solid var(--border);
-    background: #f1f3f5;
+    background: var(--chip-bg);
     color: var(--muted);
     font-size: 14px;
     padding: 7px 14px;
@@ -133,9 +200,9 @@
     font-weight: 600;
   }
   .tab.add-tab {
-    background: #fff;
+    background: var(--card);
     border-style: dashed;
-    border-color: #adb5bd;
+    border-color: var(--dashed-border);
     color: var(--accent);
     font-weight: 700;
     padding: 7px 13px;
@@ -184,14 +251,14 @@
     align-items: center;
     gap: 8px;
     padding: 11px 4px;
-    border-bottom: 1px solid #f1f3f5;
+    border-bottom: 1px solid var(--divider);
     cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }
   .clip-item:last-child { border-bottom: none; }
-  .clip-item:active { background: #f8f9fa; }
+  .clip-item:active { background: var(--press-bg); }
   .clip-idx { font-size: 12px; color: var(--muted); min-width: 18px; flex: 0 0 auto; }
   .clip-text {
     flex: 1;
@@ -207,7 +274,7 @@
   .clip-del {
     flex: 0 0 auto;
     border: none;
-    background: #f1f3f5;
+    background: var(--chip-bg);
     color: var(--muted);
     width: 26px;
     height: 26px;
@@ -220,7 +287,7 @@
     justify-content: center;
     padding: 0;
   }
-  .clip-del:active { background: #ffe3e3; color: var(--danger); }
+  .clip-del:active { background: var(--danger-press); color: var(--danger); }
   .clip-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 22px 0; }
   .clip-tip { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
 
@@ -243,7 +310,7 @@
   .cat-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
   .icon-btn {
     border: none;
-    background: #f1f3f5;
+    background: var(--chip-bg);
     color: var(--muted);
     width: 30px;
     height: 30px;
@@ -256,7 +323,7 @@
     justify-content: center;
     flex: 0 0 auto;
   }
-  .icon-btn:active { background: #e9ecef; }
+  .icon-btn:active { background: var(--chip-press); }
 
   /* ---------- 子分类分组 ---------- */
   .subcat-header {
@@ -322,7 +389,7 @@
   }
   .subcat-add {
     border: 1px dashed var(--border);
-    background: #fff;
+    background: var(--card);
     color: var(--accent);
     border-radius: 10px;
     padding: 9px 0;
@@ -383,9 +450,9 @@
   .task-btn:active { transform: scale(.96); }
   .task-btn.done { background: var(--green); }
   .task-btn.unset {
-    background: #c3cad2;
-    color: #454e57;
-    border: 1.5px dashed #8f99a3;
+    background: var(--unset-bg);
+    color: var(--unset-text);
+    border: 1.5px dashed var(--unset-border);
   }
   .task-btn .t-name {
     font-weight: 600;
@@ -427,9 +494,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, .92);
+    background: var(--bell-bg);
     border-radius: 999px;
-    color: #495057;
+    color: var(--bell-text);
     box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
     pointer-events: none;
     z-index: 2;
@@ -519,7 +586,7 @@
     padding: 8px 2px;
     border-radius: 9px;
     border: 1px solid var(--border);
-    background: #f8f9fa;
+    background: var(--field-bg);
     color: var(--text);
     font-size: 12.5px;
     cursor: pointer;
@@ -531,38 +598,38 @@
     padding: 8px 0;
     border-radius: 9px;
     border: 1px solid var(--border);
-    background: #f8f9fa;
+    background: var(--field-bg);
     color: var(--text);
     font-size: 13px;
     cursor: pointer;
   }
   .week-row button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .add-task-btn {
-    background: #fff !important;
-    color: #495057 !important;
-    border: 1.5px dashed #97a1ac;
+    background: var(--card) !important;
+    color: var(--dashed-text) !important;
+    border: 1.5px dashed var(--dashed-border);
     font-size: 12px;
     font-weight: 400 !important;
     white-space: nowrap;
   }
   .add-cat-btn {
     width: 100%;
-    border: 1.5px dashed #97a1ac;
+    border: 1.5px dashed var(--dashed-border);
     background: transparent;
-    color: #495057;
+    color: var(--dashed-text);
     border-radius: var(--radius);
     padding: 13px;
     font-size: 14px;
     cursor: pointer;
     margin-bottom: 14px;
   }
-  .add-cat-btn:active { background: #eef1f4; }
+  .add-cat-btn:active { background: var(--dashed-hover); }
 
   /* ---------- 弹窗 ---------- */
   .mask {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, .45);
+    background: var(--mask-bg);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -572,7 +639,7 @@
   @media (min-width: 480px) { .mask { align-items: center; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .sheet {
-    background: #fff;
+    background: var(--card);
     border-radius: 18px 18px 0 0;
     width: 100%;
     max-width: 480px;
@@ -589,14 +656,14 @@
   .field input, .field select {
     width: 100%;
     border: 1px solid var(--border);
-    background: #f8f9fa;
+    background: var(--field-bg);
     border-radius: 10px;
     padding: 11px 12px;
     font-size: 15px;
     color: var(--text);
     outline: none;
   }
-  .field input:focus, .field select:focus { border-color: var(--accent); background: #fff; }
+  .field input:focus, .field select:focus { border-color: var(--accent); background: var(--card); }
   .sheet-actions { display: flex; gap: 10px; margin-top: 6px; }
   .btn {
     flex: 1;
@@ -610,12 +677,12 @@
   .btn:active { opacity: .85; }
   .btn:disabled { opacity: .6; cursor: default; }
   .btn-primary { background: var(--accent); color: #fff; }
-  .btn-ghost { background: #f1f3f5; color: var(--text); }
-  .btn-danger { background: #fff0f0; color: var(--danger); }
+  .btn-ghost { background: var(--chip-bg); color: var(--text); }
+  .btn-danger { background: var(--danger-bg); color: var(--danger); }
   .menu-list { display: flex; flex-direction: column; }
   .menu-item {
     border: none;
-    background: #fff;
+    background: var(--card);
     text-align: left;
     padding: 14px 6px;
     font-size: 15px;
@@ -625,7 +692,7 @@
     color: var(--text);
   }
   .menu-item:last-child { border-bottom: none; }
-  .menu-item:active { background: #f8f9fa; }
+  .menu-item:active { background: var(--press-bg); }
   .menu-item.danger { color: var(--danger); }
   .counter-row {
     display: flex;
@@ -639,16 +706,16 @@
     height: 46px;
     border-radius: 50%;
     border: none;
-    background: #f1f3f5;
+    background: var(--chip-bg);
     font-size: 22px;
     cursor: pointer;
     color: var(--text);
     flex: 0 0 auto;
   }
-  .counter-btn:active { background: #e9ecef; }
+  .counter-btn:active { background: var(--chip-press); }
   input.counter-val {
     border: 1px solid var(--border);
-    background: #f8f9fa;
+    background: var(--field-bg);
     border-radius: 12px;
     padding: 10px;
     font-size: 24px;
@@ -667,8 +734,8 @@
     left: 50%;
     bottom: 90px;
     transform: translateX(-50%);
-    background: rgba(33, 37, 41, .9);
-    color: #fff;
+    background: var(--toast-bg);
+    color: var(--toast-text);
     font-size: 13px;
     padding: 9px 16px;
     border-radius: 999px;
@@ -680,9 +747,48 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* ---------- 深浅色过渡 ---------- */
+  body, header, .category, .sheet, .tab, .clip-item, .menu-item, .subcat-row,
+  .field input, .field select, .seg button, .week-row button, .counter-btn,
+  .icon-btn, .clip-del, .btn, .head-pill, .add-task-btn, .add-cat-btn, .subcat-add,
+  input.counter-val, .clip-empty, .subcat-empty, #themeToggle {
+    transition: background-color .25s ease, color .25s ease, border-color .25s ease;
+  }
+
+  /* ---------- 主题切换悬浮按钮（右侧边缘中上方） ---------- */
+  #themeToggle {
+    position: fixed;
+    right: 0;
+    top: 36%;
+    z-index: 60;
+    width: 38px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 12px 0 0 12px;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: -2px 2px 10px rgba(16, 24, 40, .14);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #themeToggle:active { transform: scale(.92); }
+  #themeToggle svg { width: 20px; height: 20px; display: block; }
+  /* 浅色模式显示月亮（点击进深色），深色模式显示太阳（点击回浅色） */
+  #themeToggle .icon-sun { display: none; }
+  :root[data-theme="dark"] #themeToggle .icon-sun { display: block; }
+  :root[data-theme="dark"] #themeToggle .icon-moon { display: none; }
 </style>
 </head>
 <body>
+<button id="themeToggle" type="button" title="切换深色 / 浅色模式" aria-label="切换深色 / 浅色模式">
+  <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+</button>
 
 <header>
   <div class="head-row">
@@ -705,6 +811,7 @@
   /* ================= 常量与状态 ================= */
   var STORAGE_KEY = 'taskRecordTool.v1';
   var AUTH_KEY = 'taskRecordTool.auth.v1';
+  var THEME_KEY = 'taskRecordTool.theme';  /* 深浅色偏好：light / dark，缺省跟随系统 */
   /* 云同步服务地址（部署 Cloudflare Worker 后填入，为空时仅本地模式） */
   var API_BASE = 'https://task-record-api.pages.dev';
   /* App（APK）下载链接：安卓 / 鸿蒙设备装上它，提醒由系统闹钟承载，关掉页面也能响 */
@@ -3199,6 +3306,33 @@
     document.body.classList.add('in-app');
   }
 
+  /* ================= 深色 / 浅色主题 ================= */
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'dark' ? '#17191c' : '#ffffff');
+  }
+  function initThemeToggle() {
+    var btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+    });
+    /* 未手动选择过主题时，跟随系统深浅色变化 */
+    var stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+    if (!stored && window.matchMedia) {
+      var mq = matchMedia('(prefers-color-scheme: dark)');
+      var onChange = function (e) { applyTheme(e.matches ? 'dark' : 'light'); };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+  }
+
   function openInstallHelp() {
     openModal(function (sheet, close) {
       var h = document.createElement('h3');
@@ -3295,6 +3429,7 @@
 
   /* ================= 启动 ================= */
   bindHeaderButtons();
+  initThemeToggle();
   restoreActiveTab();
   checkCycles();
   if (pruneClipboards()) save();
