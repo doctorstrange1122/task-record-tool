@@ -1156,13 +1156,24 @@
   }
 
   /* 「保存」按钮：把输入框内容存入剪贴板记录 */
-  function onClipSave() {
+  /* 「提交」按钮：把输入框内容保存到记录，并提交到云端 */
+  function onClipSubmit() {
     var ta = document.getElementById('clipInput');
     var v = (clipDraft || '').trim();
     if (!v) { toast('请先输入或粘贴内容'); return; }
     clipDraft = '';
     if (ta) { ta.value = ''; ta.blur(); }
-    saveClipRecord(v);
+    /* 先落到本机记录（提示统一在提交完成后给出） */
+    pruneClipboards();
+    data.clipboards.unshift({ id: genId(), text: v, at: Date.now() });
+    save();
+    renderClipboardList();
+    if (!auth || !apiConfigured()) { toast('已保存到记录（未登录，仅存本机）'); return; }
+    /* 取消防抖上传，改为显式提交一次 */
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+    pushData(false).then(function (r) {
+      toast(r && r.ok ? '已保存并提交到云端' : ((r && r.error) || '提交失败'));
+    });
   }
 
   /* 「清空」按钮：清空输入框 */
@@ -1293,9 +1304,9 @@
     actions.appendChild(pasteBtn);
     var saveBtn = document.createElement('button');
     saveBtn.type = 'button';
-    saveBtn.className = 'clip-save';
-    saveBtn.textContent = '保存';
-    saveBtn.addEventListener('click', onClipSave);
+    saveBtn.className = 'clip-submit';
+    saveBtn.textContent = '提交';
+    saveBtn.addEventListener('click', onClipSubmit);
     actions.appendChild(saveBtn);
     var clearBtn = document.createElement('button');
     clearBtn.type = 'button';
