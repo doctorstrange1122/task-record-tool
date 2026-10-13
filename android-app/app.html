@@ -144,22 +144,6 @@
   .head-pill:active { background: #2b8de0; }
   .head-pill:disabled { opacity: .6; cursor: default; }
   #installBtn { justify-self: start; }
-  #authBtn { justify-self: end; max-width: 36vw; }
-  #authBtn.logged {
-    color: var(--green);
-    border-color: var(--ok-border);
-    background: var(--ok-bg);
-  }
-  #authBtn.logged::before {
-    content: '';
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--green);
-    margin-right: 5px;
-    vertical-align: 1px;
-  }
   .pill-short { display: none; }
   @media (max-width: 359px) {
     .pill-full { display: none; }
@@ -1425,17 +1409,8 @@
   }
 
   function updateAuthUI() {
-    var btn = document.getElementById('authBtn');
-    if (!btn) { if (meView) render(); return; }
-    if (auth) {
-      btn.textContent = auth.nickname || auth.username;
-      btn.classList.add('logged');
-      btn.title = '已登录：' + (auth.nickname || auth.username) + '（账号 ' + auth.username + '，点击管理）';
-    } else {
-      btn.textContent = '登录';
-      btn.classList.remove('logged');
-      btn.title = '登录 / 注册以云同步任务数据';
-    }
+    /* App 版无顶部登录按钮（登录入口在「我的」页），仅刷新「我的」视图即可 */
+    if (meView) render();
   }
 
   function clearAuth(msg) {
@@ -4218,33 +4193,6 @@
         openInstallHelp();
       });
     }
-
-    var authBtn = document.getElementById('authBtn');
-    authBtn.addEventListener('click', function () {
-      if (auth) {
-        openMenuDialog('云同步 · ' + (auth.nickname || auth.username), [
-          {
-            label: '立即同步',
-            onClick: function () {
-              toast('同步请求已发送');
-              pullData(false);
-              pushData(false);
-            }
-          },
-          {
-            label: '下载 App（完整提醒）',
-            onClick: function () { openAppDownloadDialog(); }
-          },
-          {
-            label: '退出登录',
-            danger: true,
-            onClick: function () { logout(); }
-          }
-        ]);
-      } else {
-        openAuthModal('login');
-      }
-    });
 
     var headerManageBtn = document.getElementById('headerManageBtn');
     if (headerManageBtn) headerManageBtn.addEventListener('click', openAppManageMenu);
