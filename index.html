@@ -329,7 +329,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .clip-time { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+  .clip-time { font-size: 12px; color: var(--muted); flex: 0 0 auto; white-space: pre-line; line-height: 1.45; text-align: right; }
   .clip-del {
     flex: 0 0 auto;
     border: none;
@@ -880,6 +880,10 @@
   var DAY = 86400000;
   var LONG_PRESS_MS = 500;
   var MAX_COUNT = 9999;
+  /* 剪贴板记录过期时间与分页大小：必须在 loadData() 之前声明，
+    否则 loadData 内过滤时取到 undefined，导致每次打开页面清空全部记录 */
+  var CLIP_EXPIRE_MS = 7 * 24 * 3600 * 1000; /* 记录保存 7 天 */
+  var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
 
   var data = loadData();
   var auth = loadAuth();
@@ -914,7 +918,7 @@
           migrateReminders(d);
           if (!Array.isArray(d.clipboards)) d.clipboards = [];
           else d.clipboards = d.clipboards.filter(function (c) {
-            return !!c && typeof c.text === 'string' && (Date.now() - c.at) < 48 * 3600 * 1000;
+            return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
           });
           return d;
         }
@@ -946,8 +950,6 @@
   }
 
   /* ================= 跨设备剪贴板 ================= */
-  var CLIP_EXPIRE_MS = 48 * 3600 * 1000; /* 记录保存 48 小时 */
-  var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
   var clipboardView = false;             /* 当前是否显示剪贴板面板 */
   var clipDraft = '';                     /* 剪贴板输入框草稿：切走 tab 再回来不丢失 */
   /* 输入框为单行 input，仅显示预览；完整内容（含换行）始终存在 clipDraft */
@@ -997,6 +999,13 @@
   function hhmm(ts) {
     var d = new Date(ts);
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /* 剪贴板记录时间：第一行（mm:dd），第二行（hh:mm） */
+  function clipTimeText(at) {
+    var d = new Date(at);
+    return '（' + pad2(d.getMonth() + 1) + ':' + pad2(d.getDate()) + '）\n' +
+           '（' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + '）';
   }
 
   function copyText(text, okMsg) {
@@ -1128,7 +1137,7 @@
     t.textContent = '跨设备剪贴板';
     var sub = document.createElement('span');
     sub.className = 'clip-sub';
-    sub.textContent = '保存 48 小时 · 每页最多 15 条';
+    sub.textContent = '保存 7 天 · 每页最多 15 条';
     title.appendChild(t);
     title.appendChild(sub);
     head.appendChild(title);
@@ -1224,7 +1233,7 @@
       txt.textContent = c.text;
       var time = document.createElement('span');
       time.className = 'clip-time';
-      time.textContent = hhmm(c.at);
+      time.textContent = clipTimeText(c.at);
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'clip-del';
@@ -1483,7 +1492,7 @@
     clipTab.type = 'button';
     clipTab.className = 'tab clip-tab' + (clipboardView ? ' active' : '');
     clipTab.textContent = '剪贴板';
-    clipTab.title = '剪贴板：自动保存最近一条剪贴板内容，保存 48 小时，每页最多 15 条';
+    clipTab.title = '剪贴板：自动保存最近一条剪贴板内容，保存 7 天，每页最多 15 条';
     clipTab.addEventListener('click', function () {
       if (suppressClick) { suppressClick = false; return; }
       clipboardView = true;
