@@ -7,16 +7,25 @@
 <script>
   /* 主题初始化：与主界面保持一致（深浅色 + 主题色） */
   (function () {
-    try {
-      var t = localStorage.getItem('taskRecordTool.theme');
-      if (t !== 'light' && t !== 'dark') {
-        t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-      }
-      document.documentElement.setAttribute('data-theme', t);
-      var ACC = { blue: 1, green: 1, violet: 1, orange: 1, red: 1, teal: 1 };
-      var a = localStorage.getItem('taskRecordTool.accent');
-      document.documentElement.setAttribute('data-accent', ACC[a] ? a : 'blue');
-    } catch (e) {}
+    var ACC = { blue: 1, green: 1, violet: 1, orange: 1, red: 1, teal: 1 };
+    function applyThemeFromStore() {
+      try {
+        var t = localStorage.getItem('taskRecordTool.theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+        var a = localStorage.getItem('taskRecordTool.accent');
+        document.documentElement.setAttribute('data-accent', ACC[a] ? a : 'blue');
+      } catch (e) {}
+    }
+    applyThemeFromStore();
+    /* 主界面改色/切深浅时，跨 WebView 实时跟随（部分 ROM 可能不触发，显示面板时再补读一次） */
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'taskRecordTool.accent' || e.key === 'taskRecordTool.theme') applyThemeFromStore();
+    });
+    /* 供原生在每次打开面板时主动重读主题 */
+    window.__applyPanelTheme = applyThemeFromStore;
   })();
 </script>
 <style>
