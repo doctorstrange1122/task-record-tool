@@ -564,6 +564,44 @@
     }).catch(function () { /* 离线静默 */ });
   }
 
+  /* ---------- 实时推送（WebSocket）+ 自动降级 ----------
+     连的是 pages.dev（非 workers.dev）；不可用时 rtActive=false，回退到 3 秒 meta 轮询 */
+  var rtWs = null, rtActive = false, rtRetry = 0, rtRetryTimer = null, rtPingTimer = null;
+  function connectRealtime() {
+    if (!auth || !apiConfigured()) return;
+    if (rtWs && (rtWs.readyState === 0 || rtWs.readyState === 1)) return;
+    var url;
+    try { url = API_BASE.replace(/^http/, 'ws') + '/api/ws?token=' + encodeURIComponent(auth.token); }
+    catch (e) { return; }
+    try { rtWs = new WebSocket(url); } catch (e) { scheduleRealtimeRetry(); return; }
+    rtWs.onopen = function () {
+      rtRetry = 0; rtActive = true;
+      if (rtPingTimer) clearInterval(rtPingTimer);
+      rtPingTimer = setInterval(function () {
+        try { if (rtWs && rtWs.readyState === 1) rtWs.send('{"type":"ping"}'); } catch (e) {}
+      }, 25000);
+    };
+    rtWs.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data || '{}');
+        if (m && m.type === 'changed') pullData(true).then(function () { render(); });
+      } catch (e) {}
+    };
+    rtWs.onclose = function () {
+      rtActive = false;
+      if (rtPingTimer) { clearInterval(rtPingTimer); rtPingTimer = null; }
+      rtWs = null;
+      scheduleRealtimeRetry();
+    };
+    rtWs.onerror = function () { /* 交由 onclose 处理 */ };
+  }
+  function scheduleRealtimeRetry() {
+    if (rtRetryTimer) clearTimeout(rtRetryTimer);
+    var delay = Math.min(30000, 1000 * Math.pow(2, Math.min(rtRetry, 5)));
+    rtRetry++;
+    rtRetryTimer = setTimeout(connectRealtime, delay);
+  }
+
   /* ================= 周期逻辑（与主界面一致） ================= */
   function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
   function resetAt(task) { return startOfDay(task.cycleStart) + Math.max(1, task.cycleDays || 1) * DAY; }
@@ -884,18 +922,20 @@
       render();
       syncRemindersToNative(); /* 主界面可能改过提醒/周期：校准系统闹钟 */
       pollMeta(); /* 面板打开即探测一次云端是否有更新 */
+      connectRealtime(); /* 确保实时推送连接在线 */
     }
   });
 
-  /* 面板可见时高频探测（3s）：只请求版本号，发现更新才拉全量；面板关闭后 document.hidden=true 自动停 */
+  /* 面板可见时探测（3s）：仅在 WebSocket 不可用时兜底；面板关闭后 document.hidden=true 自动停 */
   setInterval(function () {
-    if (document.hidden) return;
+    if (rtActive || document.hidden) return;
     pollMeta();
   }, 3000);
 
   render();
   syncRemindersToNative(); /* 面板打开即校准一次 */
   pollMeta(); /* 打开面板即探测一次 */
+  connectRealtime(); /* 建立实时推送长连接（失败自动降级为轮询） */
 })();
 </script>
 </body>
