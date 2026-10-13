@@ -194,11 +194,11 @@
   }
   .fp-save-btn:active { opacity: .85; }
   .fp-save-btn:disabled { opacity: .5; cursor: default; }
-  /* 云同步双按钮：提交同步 / 拉取 */
+  /* 云同步双按钮：提交 / 同步 */
   .fp-sync-row {
     display: flex;
     gap: 8px;
-    margin: -2px 0 12px;
+    margin: 0 0 12px;
   }
   .fp-sync-btn {
     flex: 1 1 0;
@@ -208,11 +208,16 @@
     color: var(--accent);
     font-size: 12px;
     font-weight: 700;
-    padding: 10px 0;
+    padding: 12px 0;
     cursor: pointer;
     font-family: inherit;
   }
+  .fp-sync-btn.primary {
+    background: var(--accent);
+    color: #fff;
+  }
   .fp-sync-btn:active { background: var(--chip-bg); }
+  .fp-sync-btn.primary:active { opacity: .85; }
   .fp-sync-btn:disabled { opacity: .5; cursor: default; }
   .fp-list-title {
     font-size: 10px;
@@ -676,75 +681,44 @@
   function renderClipTab() {
     body.innerHTML = '';
 
-    /* 当前剪贴板快照（实时读取） */
-    var snap = document.createElement('div');
-    snap.className = 'fp-snap';
-    var label = document.createElement('div');
-    label.className = 'fp-snap-label';
-    var labelText = document.createElement('span');
-    labelText.textContent = '当前剪贴板';
-    var refresh = document.createElement('button');
-    refresh.type = 'button';
-    refresh.className = 'fp-snap-refresh';
-    refresh.textContent = '重新读取';
-    refresh.addEventListener('click', function () { render(); });
-    label.appendChild(labelText);
-    label.appendChild(refresh);
-    snap.appendChild(label);
-    var snapText = document.createElement('div');
-    var clip = Native.clipSnapshot().trim();
-    snapText.className = 'fp-snap-text' + (clip ? '' : ' empty');
-    snapText.textContent = clip || '（剪贴板为空或非文本内容）';
-    snap.appendChild(snapText);
-    body.appendChild(snap);
+    /* 不再显示「当前剪贴板」快照框（该框无输入功能）：内容由「提交」按钮直接读取系统剪贴板 */
 
-    /* 一键保存 */
-    var saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'fp-save-btn';
-    saveBtn.textContent = '保存到记录';
-    saveBtn.disabled = !clip;
-    saveBtn.addEventListener('click', function () {
+    /* 两个动作按钮：提交（把最近一条剪贴板保存到记录并提交云端）/ 同步（从云端拉取最新数据） */
+    var actRow = document.createElement('div');
+    actRow.className = 'fp-sync-row';
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'fp-sync-btn primary';
+    submitBtn.textContent = '提交';
+    submitBtn.addEventListener('click', function () {
       var text = Native.clipSnapshot().trim();
-      if (!text) { toast('剪贴板为空'); return; }
+      if (!text) { toast('剪贴板为空或非文本内容'); return; }
       pruneClipboards();
       data.clipboards.unshift({ id: genId(), text: text, at: Date.now() });
-      save();
-      toast('已保存到剪贴板记录');
-      render();
-    });
-    body.appendChild(saveBtn);
-
-    /* 云同步：提交同步（上传）/ 拉取（下载）——不打开主界面也能手动同步 */
-    var syncRow = document.createElement('div');
-    syncRow.className = 'fp-sync-row';
-    var pushBtn = document.createElement('button');
-    pushBtn.type = 'button';
-    pushBtn.className = 'fp-sync-btn';
-    pushBtn.textContent = '提交同步';
-    pushBtn.addEventListener('click', function () {
-      if (!auth) { toast('请先到主界面登录账号'); return; }
-      pushBtn.disabled = true;
+      writeLocal(); /* 先落到本机记录 */
+      if (!auth || !apiConfigured()) { toast('已保存到记录（未登录，仅存本机）'); render(); return; }
+      submitBtn.disabled = true;
+      toast('已保存，正在提交…');
       pushData(false).then(function (r) {
-        toast(r.ok ? '已提交同步' : (r.error || '同步失败'));
+        toast(r.ok ? '已保存并提交到云端' : (r.error || '提交失败'));
         render();
       });
     });
-    var pullBtn = document.createElement('button');
-    pullBtn.type = 'button';
-    pullBtn.className = 'fp-sync-btn';
-    pullBtn.textContent = '拉取';
-    pullBtn.addEventListener('click', function () {
-      if (!auth) { toast('请先到主界面登录账号'); return; }
-      pullBtn.disabled = true;
+    actRow.appendChild(submitBtn);
+    var syncBtn = document.createElement('button');
+    syncBtn.type = 'button';
+    syncBtn.className = 'fp-sync-btn';
+    syncBtn.textContent = '同步';
+    syncBtn.addEventListener('click', function () {
+      if (!auth || !apiConfigured()) { toast('请先到主界面登录账号'); return; }
+      syncBtn.disabled = true;
       pullData(false, true).then(function (r) {
-        toast(r.ok ? (r.updated ? '已拉取最新记录' : '已是最新') : (r.error || '拉取失败'));
+        toast(r.ok ? (r.updated ? '已同步最新记录' : '已是最新') : (r.error || '同步失败'));
         render();
       });
     });
-    syncRow.appendChild(pushBtn);
-    syncRow.appendChild(pullBtn);
-    body.appendChild(syncRow);
+    actRow.appendChild(syncBtn);
+    body.appendChild(actRow);
 
     /* 记录列表 */
     var title = document.createElement('div');
