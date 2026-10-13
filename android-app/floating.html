@@ -715,16 +715,19 @@
     setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 1800);
   }
 
+  /* 复制文本；返回是否成功（供调用方决定后续动作） */
   function copyText(text, okMsg) {
-    if (Native.copy(text)) { toast(okMsg || '已复制'); return; }
+    if (Native.copy(text)) { toast(okMsg || '已复制'); return true; }
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.style.cssText = 'position:fixed;top:-999px;opacity:0;';
     document.body.appendChild(ta);
     ta.focus(); ta.select();
-    try { document.execCommand('copy'); toast(okMsg || '已复制'); }
-    catch (e) { toast('复制失败'); }
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     document.body.removeChild(ta);
+    toast(ok ? (okMsg || '已复制') : '复制失败');
+    return ok;
   }
 
   /* ================= 剪贴板 tab ================= */
@@ -792,7 +795,11 @@
       txt.className = 'fp-rec-text';
       txt.textContent = c.text;
       row.appendChild(txt);
-      row.addEventListener('click', function () { copyText(c.text, '已复制该条记录'); });
+      /* 点击记录：复制内容 → 提示「复制成功」→ 自动收起面板 */
+      row.addEventListener('click', function () {
+        var ok = copyText(c.text, '复制成功');
+        if (ok) setTimeout(function () { Native.close(); }, 150);
+      });
       body.appendChild(row);
     });
   }
