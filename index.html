@@ -991,16 +991,23 @@
 
   /* 清理过期记录，返回是否有删除 */
   /* 清理过期记录；并限制总条数——防止整包超过服务端 512KB 上限导致同步整体失败 */
-  var CLIP_KEEP_MAX = 60;
+  var CLIP_KEEP_MAX = 200;          /* 最多保留 200 条 */
+  var CLIP_KEEP_MAX_CHARS = 120000; /* 剪贴板文本总量安全阀（约 240KB）：防止整包超过服务端 512KB 上限 */
   function pruneClipboards() {
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
     var list = data.clipboards.filter(clipFresh);
-    if (list.length > CLIP_KEEP_MAX) {
-      list.sort(function (a, b) { return b.at - a.at; });
-      list = list.slice(0, CLIP_KEEP_MAX);
+    list.sort(function (a, b) { return b.at - a.at; }); /* 新的在前 */
+    if (list.length > CLIP_KEEP_MAX) list = list.slice(0, CLIP_KEEP_MAX);
+    /* 安全阀：文本总量过大时从最旧的开始丢弃（至少保留最新 1 条） */
+    var chars = 0, kept = [];
+    for (var i = 0; i < list.length; i++) {
+      var len = String(list[i].text || '').length;
+      if (kept.length > 0 && chars + len > CLIP_KEEP_MAX_CHARS) break;
+      chars += len;
+      kept.push(list[i]);
     }
-    data.clipboards = list;
+    data.clipboards = kept;
     return data.clipboards.length !== before;
   }
 
