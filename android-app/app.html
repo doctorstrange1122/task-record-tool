@@ -346,6 +346,17 @@
   .clip-del:active { background: var(--danger-press); color: var(--danger); }
   .clip-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 22px 0; }
 
+  /* 记录分页控件 */
+  .clip-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+  .clip-page-btn {
+    flex: 1 1 0; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card); color: var(--text); font-family: inherit;
+    font-size: 12px; font-weight: 600; padding: 9px 0; cursor: pointer;
+  }
+  .clip-page-btn:active { background: var(--chip-press); }
+  .clip-page-btn:disabled { opacity: .4; cursor: default; }
+  .clip-page-info { flex: 0 0 auto; font-size: 12px; color: var(--muted); min-width: 56px; text-align: center; }
+
   /* ---------- 主体：分类容器 ---------- */
   main { max-width: 720px; margin: 0 auto; padding: 14px 12px 0; }
   .category {
@@ -967,6 +978,7 @@
     否则 loadData 内过滤时取到 undefined，导致每次打开页面清空全部记录 */
   var CLIP_EXPIRE_MS = 7 * 24 * 3600 * 1000; /* 记录保存 7 天 */
   var CLIP_PAGE_SIZE = 15;               /* 每页最多显示 15 条 */
+  var clipPage = 0;                      /* 剪贴板记录当前页码（从 0 开始） */
   /* APK 专用文档：App 化交互（底部导航、底部动作菜单、原生桥） */
   var APP_MODE = true;
   var ACCENT_KEY = 'taskRecordTool.accent';
@@ -1172,6 +1184,7 @@
     if (ta) { ta.value = ''; ta.blur(); }
     /* 先落到本机记录（提示统一在提交完成后给出） */
     pruneClipboards();
+    clipPage = 0; /* 新记录：回到第 1 页 */
     data.clipboards.unshift({ id: genId(), text: v, at: Date.now() });
     save();
     renderClipboardList();
@@ -1230,6 +1243,7 @@
 
   function saveClipRecord(text) {
     pruneClipboards();
+    clipPage = 0; /* 新记录：回到第 1 页 */
     data.clipboards.unshift({ id: genId(), text: text, at: Date.now() });
     save();
     scheduleSync(150); /* 剪贴板：缩短防抖，尽快上传，其他设备更快拉到 */
@@ -1254,7 +1268,7 @@
     noteRow.className = 'clip-note-row';
     var clipNote = document.createElement('div');
     clipNote.className = 'clip-note';
-    clipNote.textContent = '保存 7 天 · 每页最多 15 条';
+    clipNote.textContent = '保存 7 天 · 每页 15 条，可翻页';
     noteRow.appendChild(clipNote);
     var refreshBtn = document.createElement('button');
     refreshBtn.type = 'button';
@@ -1346,8 +1360,11 @@
     if (!list) return;
     list.innerHTML = '';
     pruneClipboards();
-    var items = data.clipboards.slice().sort(function (a, b) { return b.at - a.at; })
-      .slice(0, CLIP_PAGE_SIZE);
+    var all = data.clipboards.slice().sort(function (a, b) { return b.at - a.at; });
+    var totalPages = Math.max(1, Math.ceil(all.length / CLIP_PAGE_SIZE));
+    if (clipPage > totalPages - 1) clipPage = totalPages - 1; /* 删除后页码越界则回退 */
+    if (clipPage < 0) clipPage = 0;
+    var items = all.slice(clipPage * CLIP_PAGE_SIZE, clipPage * CLIP_PAGE_SIZE + CLIP_PAGE_SIZE);
     if (!items.length) {
       var empty = document.createElement('div');
       empty.className = 'clip-empty';
@@ -1360,7 +1377,7 @@
       row.className = 'clip-item';
       var idx = document.createElement('span');
       idx.className = 'clip-idx';
-      idx.textContent = (i + 1) + '.';
+      idx.textContent = (clipPage * CLIP_PAGE_SIZE + i + 1) + '.';
       var txt = document.createElement('span');
       txt.className = 'clip-text';
       txt.textContent = c.text;
@@ -1385,6 +1402,31 @@
       });
       list.appendChild(row);
     });
+
+    /* 分页控件（多于 1 页才显示） */
+    if (totalPages > 1) {
+      var pager = document.createElement('div');
+      pager.className = 'clip-pager';
+      var prevBtn = document.createElement('button');
+      prevBtn.type = 'button';
+      prevBtn.className = 'clip-page-btn';
+      prevBtn.textContent = '上一页';
+      prevBtn.disabled = clipPage <= 0;
+      prevBtn.addEventListener('click', function () { clipPage--; renderClipboardList(); });
+      var pageInfo = document.createElement('span');
+      pageInfo.className = 'clip-page-info';
+      pageInfo.textContent = (clipPage + 1) + ' / ' + totalPages;
+      var nextBtn = document.createElement('button');
+      nextBtn.type = 'button';
+      nextBtn.className = 'clip-page-btn';
+      nextBtn.textContent = '下一页';
+      nextBtn.disabled = clipPage >= totalPages - 1;
+      nextBtn.addEventListener('click', function () { clipPage++; renderClipboardList(); });
+      pager.appendChild(prevBtn);
+      pager.appendChild(pageInfo);
+      pager.appendChild(nextBtn);
+      list.appendChild(pager);
+    }
   }
 
   function activeAccount() {
@@ -2327,6 +2369,7 @@
     if (tab === 'task' && data.accounts.length && !data.activeAccountId) {
       data.activeAccountId = data.accounts[0].id;
     }
+    if (tab === 'clip') clipPage = 0; /* 进入剪贴板页：回到第 1 页看最新 */
     saveActiveTab();
     render();
     /* 进入剪贴板页：立即拉一次云端，尽快看到其他设备保存的内容 */
