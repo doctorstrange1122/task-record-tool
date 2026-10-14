@@ -652,8 +652,10 @@
   function startOfDay(ts) { var d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
   function resetAt(task) { return startOfDay(task.cycleStart) + Math.max(1, task.cycleDays || 1) * DAY; }
   function remainLabel(task) {
+    /* 本周期尚未开始（还没点击过）或已过清零时刻：都算「未完成」 */
+    if (!task.cycleStart || task.cycleStart <= 0) return '未完成';
     var left = resetAt(task) - Date.now();
-    if (left <= 0) return '已到期';
+    if (left <= 0) return '未完成';
     var days = Math.floor(left / DAY);
     var hours = Math.floor((left % DAY) / 3600000);
     return days > 0 ? days + ' 天后清零' : hours + ' 小时后清零';
