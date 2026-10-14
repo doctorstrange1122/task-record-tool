@@ -5,8 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-import androidx.core.content.ContextCompat;
-
 /**
  * 开机 / 应用升级后：重新排程系统闹钟；若悬浮窗此前开启则恢复悬浮球。
  */
@@ -28,7 +26,8 @@ public class BootReceiver extends BroadcastReceiver {
             }
             if (FloatingPrefs.isEnabled(ctx)) {
                 try {
-                    ContextCompat.startForegroundService(ctx, new Intent(ctx, FloatingService.class));
+                    FloatingService.ensureRunning(ctx);
+                    FloatingService.scheduleHeartbeat(ctx); /* 开机即续上进程外心跳链 */
                 } catch (Exception ignore) {
                 }
             }

@@ -10,7 +10,7 @@ import android.os.Build;
  */
 public class App extends Application {
 
-    public static final String CHANNEL_REMIND = "task_reminder";
+    public static final String CHANNEL_REMIND = "task_reminder_v2";
     public static final String CHANNEL_FLOATING = "floating_service";
 
     @Override
@@ -26,14 +26,20 @@ public class App extends Application {
 
         NotificationChannel remind = new NotificationChannel(
                 CHANNEL_REMIND, "任务提醒", NotificationManager.IMPORTANCE_HIGH);
-        remind.setDescription("任务到点提醒（系统闹钟触发）");
+        remind.setDescription("任务到点提醒（系统闹钟触发，响铃 + 震动）");
         remind.enableVibration(true);
+        remind.setVibrationPattern(new long[]{0, 500, 250, 500, 250, 800});
         remind.enableLights(true);
-        remind.setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
+        remind.setLightColor(0xFFFF0000);
+        /* 用系统「闹铃」音而非通知音：更响、更易被听到 */
+        android.net.Uri sound = android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI;
+        if (sound == null) sound = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+        remind.setSound(sound,
                 new android.media.AudioAttributes.Builder()
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
                         .build());
+        remind.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(remind);
 
         NotificationChannel floating = new NotificationChannel(

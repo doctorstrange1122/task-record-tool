@@ -2,17 +2,23 @@
 <resources>
     <!-- 主界面：Material 浅色无 ActionBar（页面自带顶栏与深浅色） -->
     <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#FF7A00</item>
+        <!-- 状态栏颜色由页面通过原生桥（AndroidHost.setStatusBarColor）按主题色实时设置；
+             此处仅为加载前的兜底默认值（默认主题蓝） -->
+        <item name="android:statusBarColor">#FF339AF0</item>
         <item name="android:windowBackground">#FFF7F5F2</item>
     </style>
 
     <!-- 悬浮面板：全透明 + 无动画 -->
     <style name="PanelTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
         <item name="android:backgroundDimEnabled">false</item>
     </style>
 </resources>

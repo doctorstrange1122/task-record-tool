@@ -9,46 +9,22 @@
         android:id="@+id/panelCard"
         android:layout_width="300dp"
         android:layout_height="0dp"
-        android:layout_gravity="end|center_vertical"
+        android:layout_gravity="center_vertical"
         android:background="@drawable/bg_panel_card"
         android:orientation="vertical">
 
-        <!-- 原生拖拽条：下拉关闭面板 -->
+        <!-- 原生拖拽条：顶部居中，左右拖动使面板贴边吸附 -->
         <LinearLayout
             android:id="@+id/panelHandle"
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingEnd="8dp">
+            android:layout_height="20dp"
+            android:gravity="center"
+            android:orientation="horizontal">
 
             <View
-                android:layout_width="32dp"
-                android:layout_height="4dp"
-                android:layout_gravity="center_vertical"
+                android:layout_width="50dp"
+                android:layout_height="5dp"
                 android:background="@drawable/bg_handle_pill" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginStart="10dp"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:text="快速记录"
-                android:textColor="#666666"
-                android:textSize="13sp" />
-
-            <ImageButton
-                android:id="@+id/panelClose"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="?android:attr/selectableItemBackground"
-                android:contentDescription="关闭面板"
-                android:padding="10dp"
-                android:src="@drawable/ic_close" />
         </LinearLayout>
 
         <View

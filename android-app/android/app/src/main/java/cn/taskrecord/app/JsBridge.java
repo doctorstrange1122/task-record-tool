@@ -11,6 +11,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -24,22 +26,39 @@ import androidx.core.content.ContextCompat;
  */
 public class JsBridge {
 
+    private final Context ctx;
     private final Activity activity;
+    private Runnable closePanelRunnable;
 
     public JsBridge(Activity activity) {
         this.activity = activity;
+        this.ctx = activity;
+    }
+
+    /** 供前台服务中的悬浮面板浮层使用（无 Activity） */
+    public JsBridge(Context context) {
+        this.activity = null;
+        this.ctx = context;
+    }
+
+    public void setClosePanelCallback(Runnable r) {
+        this.closePanelRunnable = r;
     }
 
     private Context ctx() {
-        return activity == null ? null : activity.getApplicationContext();
+        return ctx;
     }
 
     private void ui(Runnable r) {
-        if (activity != null) activity.runOnUiThread(r);
+        if (activity != null) {
+            activity.runOnUiThread(r);
+        } else {
+            new Handler(Looper.getMainLooper()).post(r);
+        }
     }
 
     private void showToast(final String msg) {
-        ui(() -> Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show());
+        ui(() -> Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show());
     }
 
     /* ================= 剪贴板 ================= */
@@ -47,7 +66,7 @@ public class JsBridge {
     @JavascriptInterface
     public String readClipboard() {
         try {
-            ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm == null || !cm.hasPrimaryClip()) return "";
             ClipData cd = cm.getPrimaryClip();
             if (cd == null || cd.getItemCount() == 0) return "";
@@ -67,7 +86,7 @@ public class JsBridge {
     @JavascriptInterface
     public boolean copyText(String text) {
         try {
-            ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("task_record", text == null ? "" : text));
             showToast("已复制");
             return true;
@@ -112,6 +131,11 @@ public class JsBridge {
             return true;
         } else {
             FloatingPrefs.setEnabled(c, false);
+            /* 用户主动关闭：连同心跳/重启闹钟一起取消，避免无谓唤醒 */
+            try {
+                FloatingService.cancelHeartbeat(c);
+            } catch (Exception ignore) {
+            }
             try {
                 c.stopService(new Intent(c, FloatingService.class));
             } catch (Exception ignore) {
@@ -235,8 +259,8 @@ public class JsBridge {
     @JavascriptInterface
     public boolean closePanel() {
         ui(() -> {
-            if (activity instanceof PanelActivity) {
-                activity.finish();
+            if (closePanelRunnable != null) {
+                closePanelRunnable.run();
             }
         });
         return true;
@@ -262,9 +286,71 @@ public class JsBridge {
         if (msg != null && !msg.isEmpty()) showToast(msg);
     }
 
+    /** 设置状态栏颜色（跟随页面主题色）；按亮度自动切换状态栏图标深浅 */
+    @JavascriptInterface
+    public void setStatusBarColor(final String color) {
+        final Activity a = activity;
+        if (a == null || color == null) return;
+        ui(() -> {
+            try {
+                int c = android.graphics.Color.parseColor(color.trim());
+                android.view.Window w = a.getWindow();
+                w.setStatusBarColor(c);
+                double lum = (0.299 * android.graphics.Color.red(c)
+                        + 0.587 * android.graphics.Color.green(c)
+                        + 0.114 * android.graphics.Color.blue(c)) / 255.0;
+                android.view.View decor = w.getDecorView();
+                int flags = decor.getSystemUiVisibility();
+                if (lum > 0.6) {
+                    flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                } else {
+                    flags &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                }
+                decor.setSystemUiVisibility(flags);
+            } catch (Exception ignore) {
+            }
+        });
+    }
+
     @JavascriptInterface
     public String appVersion() {
         return BuildConfig.VERSION_NAME;
+    }
+
+    /** 应用内提醒：播放系统闹铃音 + 震动（弹窗时调用；WebView 的 WebAudio 常被自动播放策略拦截而无声） */
+    @JavascriptInterface
+    public void playAlarm() {
+        final Context c = ctx();
+        if (c == null) return;
+        ui(() -> {
+            /* 响铃：优先系统闹铃音，退到通知音 */
+            try {
+                android.net.Uri uri = android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI;
+                if (uri == null) uri = android.provider.Settings.System.DEFAULT_NOTIFICATION_URI;
+                final android.media.Ringtone rt = android.media.RingtoneManager.getRingtone(c, uri);
+                if (rt != null) {
+                    try { rt.setStreamType(android.media.AudioManager.STREAM_ALARM); } catch (Exception ignore) {}
+                    rt.play();
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        try { if (rt.isPlaying()) rt.stop(); } catch (Exception ignore) {}
+                    }, 8000);
+                }
+            } catch (Exception ignore) {
+            }
+            /* 震动：多段波形，比默认单次更明显 */
+            try {
+                android.os.Vibrator v = (android.os.Vibrator) c.getSystemService(Context.VIBRATOR_SERVICE);
+                if (v != null) {
+                    long[] pattern = {0, 500, 250, 500, 250, 800};
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        v.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
+                    } else {
+                        v.vibrate(pattern, -1);
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+        });
     }
 
     /** 供页面探测桥是否可用（JS 侧用 Native.available() 亦可） */

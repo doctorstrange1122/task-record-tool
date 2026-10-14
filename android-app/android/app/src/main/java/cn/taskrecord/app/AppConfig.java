@@ -1,9 +1,9 @@
 package cn.taskrecord.app;
 
 /**
- * 加载策略：优先加载 GitHub Pages 上的在线文档（改内容不用重新打包），
- * 断网 / 加载失败时回退到 assets 内的快照（https://app.local/）。
- * useLocal 为静态标志，保证主界面与悬浮面板的回退一致（同 origin 才能共享 localStorage）。
+ * 加载策略：只加载 GitHub Pages 上的在线文档（app.html / floating.html）。
+ * 已按需求取消 assets 离线快照：改网页内容无需重新打包 APK，推送即生效。
+ * 代价是断网时页面无法打开（预期行为）。
  */
 public final class AppConfig {
 
@@ -23,11 +23,11 @@ public final class AppConfig {
     private static final String APP_PARAM = "?app=1";
 
     public static String appUrl() {
-        return (useLocal ? LOCAL_ORIGIN + "app.html" : REMOTE_BASE + "app.html") + APP_PARAM;
+        return REMOTE_BASE + "app.html" + APP_PARAM;
     }
 
     public static String panelUrl() {
-        return (useLocal ? LOCAL_ORIGIN + "floating.html" : REMOTE_BASE + "floating.html") + APP_PARAM;
+        return REMOTE_BASE + "floating.html" + APP_PARAM;
     }
 
     /** 附带提醒参数（从系统通知点击进入时弹出对应提醒） */

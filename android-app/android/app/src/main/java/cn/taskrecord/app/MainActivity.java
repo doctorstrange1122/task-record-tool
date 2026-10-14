@@ -163,6 +163,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        /* 打开 App 时顺手续上悬浮球：确保服务在运行，并重置进程外心跳 */
+        try {
+            if (FloatingPrefs.isEnabled(this)) {
+                FloatingService.ensureRunning(this);
+                FloatingService.scheduleHeartbeat(this);
+            }
+        } catch (Exception ignore) {
+        }
     }
 
     @Override

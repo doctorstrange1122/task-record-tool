@@ -46,28 +46,10 @@ android {
         buildConfig = true
     }
 
-    /* 构建前把仓库根目录的线上文档快照进 assets，保证 APK 离线回退与线上一致 */
-    task syncAssets {
-        doLast {
-            def src = rootProject.file('../app.html')
-            def src2 = rootProject.file('../floating.html')
-            def dstDir = file('src/main/assets')
-            dstDir.mkdirs()
-            if (src.exists()) {
-                copy { from src; into dstDir }
-                println '[syncAssets] app.html -> ' + dstDir
-            } else {
-                println '[syncAssets] WARN 未找到 ../app.html'
-            }
-            if (src2.exists()) {
-                copy { from src2; into dstDir }
-                println '[syncAssets] floating.html -> ' + dstDir
-            } else {
-                println '[syncAssets] WARN 未找到 ../floating.html'
-            }
-        }
-    }
-    preBuild.dependsOn syncAssets
+    /* 已按需求取消 assets 离线快照：APK 只加载 GitHub Pages 在线文档，
+       改网页内容无需重新打包；断网时页面打不开属预期行为。
+       注意：不要再恢复「构建时把 html 拷进 assets」的 syncAssets 任务，
+       否则 APK 会重新内置一份快照，与「强制在线」的需求冲突。 */
 }
 
 dependencies {

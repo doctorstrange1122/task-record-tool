@@ -9,6 +9,7 @@
     <!-- 系统提醒：通知渠道 / 精确闹钟 / 开机自启补排 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -41,21 +42,14 @@
             </intent-filter>
         </activity>
 
-        <!-- 悬浮面板：透明背景的底部卡片，顶部原生拖拽条 -->
-        <activity
-            android:name=".PanelActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:noHistory="true"
-            android:taskAffinity=""
-            android:theme="@style/PanelTheme"
-            android:windowSoftInputMode="adjustResize" />
+        <!-- 悬浮面板已由 FloatingService 通过 WindowManager 浮层承载（兼容鸿蒙透明背景） -->
 
         <!-- 悬浮球服务 -->
         <service
             android:name=".FloatingService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -66,6 +60,18 @@
         <receiver
             android:name=".ReminderReceiver"
             android:exported="false" />
+
+        <!-- 悬浮球进程外心跳看门狗：闹钟/亮屏唤醒，专门应对「进程被冻结或被杀后悬浮球消失」 -->
+        <receiver
+            android:name=".FloatingWatchdog"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="cn.taskrecord.app.FLOATING_HEARTBEAT" />
+                <action android:name="android.intent.action.SCREEN_ON" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
 
         <!-- 开机 / 升级后补排闹钟与悬浮窗 -->
         <receiver
