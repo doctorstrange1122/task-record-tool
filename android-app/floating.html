@@ -443,10 +443,17 @@
   function clipFresh(c) {
     return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
   }
+  /* 清理过期记录；并限制总条数（与主界面/网页版一致：60 条），避免整包超过服务端 512KB 上限导致同步失败 */
+  var CLIP_KEEP_MAX = 60;
   function pruneClipboards() {
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
-    data.clipboards = data.clipboards.filter(clipFresh);
+    var list = data.clipboards.filter(clipFresh);
+    if (list.length > CLIP_KEEP_MAX) {
+      list.sort(function (a, b) { return b.at - a.at; });
+      list = list.slice(0, CLIP_KEEP_MAX);
+    }
+    data.clipboards = list;
     return data.clipboards.length !== before;
   }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
