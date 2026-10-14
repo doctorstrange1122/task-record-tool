@@ -234,6 +234,35 @@
   }
   .fp-rec-item:last-child { border-bottom: none; }
   .fp-rec-item:active { background: var(--press-bg); }
+  /* 记录分页控件 */
+  .fp-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .fp-page-btn {
+    flex: 1 1 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 8px 0;
+    cursor: pointer;
+  }
+  .fp-page-btn:active { background: var(--chip-press); }
+  .fp-page-btn:disabled { opacity: .4; cursor: default; }
+  .fp-page-info {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 48px;
+    text-align: center;
+  }
   .fp-rec-text {
     flex: 1;
     font-size: 11px;
@@ -392,6 +421,8 @@
   var API_BASE = 'https://task-record-api.pages.dev';
   var DAY = 86400000;
   var CLIP_EXPIRE_MS = 7 * 24 * 3600 * 1000;
+  var CLIP_PAGE_SIZE = 10;   /* 面板每页显示 10 条 */
+  var clipPage = 0;          /* 当前页码（从 0 开始） */
 
   /* ================= 原生桥 ================= */
   var Native = {
@@ -444,16 +475,23 @@
     return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
   }
   /* 清理过期记录；并限制总条数（与主界面/网页版一致：60 条），避免整包超过服务端 512KB 上限导致同步失败 */
-  var CLIP_KEEP_MAX = 60;
+  var CLIP_KEEP_MAX = 200;          /* 最多保留 200 条 */
+  var CLIP_KEEP_MAX_CHARS = 120000; /* 剪贴板文本总量安全阀（约 240KB）：防止整包超过服务端 512KB 上限 */
   function pruneClipboards() {
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
     var list = data.clipboards.filter(clipFresh);
-    if (list.length > CLIP_KEEP_MAX) {
-      list.sort(function (a, b) { return b.at - a.at; });
-      list = list.slice(0, CLIP_KEEP_MAX);
+    list.sort(function (a, b) { return b.at - a.at; }); /* 新的在前 */
+    if (list.length > CLIP_KEEP_MAX) list = list.slice(0, CLIP_KEEP_MAX);
+    /* 安全阀：文本总量过大时从最旧的开始丢弃（至少保留最新 1 条） */
+    var chars = 0, kept = [];
+    for (var i = 0; i < list.length; i++) {
+      var len = String(list[i].text || '').length;
+      if (kept.length > 0 && chars + len > CLIP_KEEP_MAX_CHARS) break;
+      chars += len;
+      kept.push(list[i]);
     }
-    data.clipboards = list;
+    data.clipboards = kept;
     return data.clipboards.length !== before;
   }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -756,6 +794,7 @@
       pruneClipboards();
       data.clipboards.unshift({ id: genId(), text: text, at: Date.now() });
       writeLocal(); /* 先落到本机记录 */
+      clipPage = 0; /* 新增记录后回到第一页，方便立刻看到 */
       if (!auth || !apiConfigured()) { toast('已保存到记录（未登录，仅存本机）'); render(); return; }
       submitBtn.disabled = true;
       toast('已保存，正在提交…');
@@ -780,21 +819,26 @@
     actRow.appendChild(syncBtn);
     body.appendChild(actRow);
 
-    /* 记录列表 */
+    /* 记录列表（每页 10 条） */
     var title = document.createElement('div');
     title.className = 'fp-list-title';
     if (pruneClipboards()) writeLocal(); /* 裁剪后落盘，保持与云端一致 */
-    title.textContent = '保存的记录（' + data.clipboards.length + ' 条，点击复制）';
+    var all = data.clipboards.slice().sort(function (a, b) { return b.at - a.at; });
+    var totalPages = Math.max(1, Math.ceil(all.length / CLIP_PAGE_SIZE));
+    if (clipPage > totalPages - 1) clipPage = totalPages - 1;
+    if (clipPage < 0) clipPage = 0;
+    title.textContent = '保存的记录（' + all.length + ' 条' +
+      (totalPages > 1 ? '，第 ' + (clipPage + 1) + '/' + totalPages + ' 页' : '') + '，点击复制）';
     body.appendChild(title);
 
-    if (!data.clipboards.length) {
+    if (!all.length) {
       var empty = document.createElement('div');
       empty.className = 'fp-empty';
       empty.textContent = '暂无记录';
       body.appendChild(empty);
       return;
     }
-    var items = data.clipboards.slice().sort(function (a, b) { return b.at - a.at; }).slice(0, 30);
+    var items = all.slice(clipPage * CLIP_PAGE_SIZE, clipPage * CLIP_PAGE_SIZE + CLIP_PAGE_SIZE);
     items.forEach(function (c) {
       var row = document.createElement('div');
       row.className = 'fp-rec-item';
@@ -809,6 +853,31 @@
       });
       body.appendChild(row);
     });
+
+    /* 分页控件（多于 1 页才显示） */
+    if (totalPages > 1) {
+      var pager = document.createElement('div');
+      pager.className = 'fp-pager';
+      var prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'fp-page-btn';
+      prev.textContent = '上一页';
+      prev.disabled = clipPage <= 0;
+      prev.addEventListener('click', function () { clipPage--; render(); });
+      var info = document.createElement('span');
+      info.className = 'fp-page-info';
+      info.textContent = (clipPage + 1) + ' / ' + totalPages;
+      var next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'fp-page-btn';
+      next.textContent = '下一页';
+      next.disabled = clipPage >= totalPages - 1;
+      next.addEventListener('click', function () { clipPage++; render(); });
+      pager.appendChild(prev);
+      pager.appendChild(info);
+      pager.appendChild(next);
+      body.appendChild(pager);
+    }
   }
 
   /* ================= 任务 tab ================= */
