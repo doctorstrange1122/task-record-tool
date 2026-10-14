@@ -783,7 +783,7 @@
     /* 记录列表 */
     var title = document.createElement('div');
     title.className = 'fp-list-title';
-    pruneClipboards();
+    if (pruneClipboards()) writeLocal(); /* 裁剪后落盘，保持与云端一致 */
     title.textContent = '保存的记录（' + data.clipboards.length + ' 条，点击复制）';
     body.appendChild(title);
 
