@@ -206,9 +206,10 @@
     border-radius: 12px;
     background: transparent;
     color: var(--accent);
-    font-size: 12px;
+    font-size: 18px;
     font-weight: 700;
-    padding: 12px 0;
+    line-height: 1.1;
+    padding: 2px 0;
     cursor: pointer;
     font-family: inherit;
   }
@@ -827,8 +828,8 @@
     var totalPages = Math.max(1, Math.ceil(all.length / CLIP_PAGE_SIZE));
     if (clipPage > totalPages - 1) clipPage = totalPages - 1;
     if (clipPage < 0) clipPage = 0;
-    title.textContent = '保存的记录（' + all.length + ' 条' +
-      (totalPages > 1 ? '，第 ' + (clipPage + 1) + '/' + totalPages + ' 页' : '') + '，点击复制）';
+    title.textContent = all.length + ' 条' +
+      (totalPages > 1 ? '，第 ' + (clipPage + 1) + '/' + totalPages + ' 页' : '') + '，点击复制';
     body.appendChild(title);
 
     if (!all.length) {
