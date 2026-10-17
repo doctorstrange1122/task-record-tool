@@ -16,7 +16,14 @@
   p { margin: 10px 0; }
   .lead { text-align: center; color: #7f8c8d; }
   .badge { display: inline-block; background: #f39c12; color: #fff; padding: 2px 9px; border-radius: 3px; font-size: 12px; margin-left: 6px; }
-  .shot { width: 100%; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); margin: 14px 0; display: block; }
+  .shot { width: 100%; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); margin: 14px 0; display: block; cursor: zoom-in; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 16px 0; }
+  .thumb { width: 150px; text-align: center; cursor: zoom-in; }
+  .thumb img { width: 150px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: block; transition: transform .15s; }
+  .thumb img:hover { transform: scale(1.04); }
+  .thumb .t-cap { font-size: 12px; color: #7f8c8d; margin-top: 6px; line-height: 1.5; }
+  #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 999; cursor: zoom-out; justify-content: center; align-items: center; }
+  #lightbox img { max-width: 92vw; max-height: 94vh; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,.5); }
   .cap { text-align: center; color: #95a5a6; font-size: 13px; margin: -6px 0 18px; }
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; margin: 12px 0; }
   th { background: #34495e; color: #fff; padding: 10px 12px; text-align: left; }
@@ -58,6 +65,21 @@
 </ul>
 <div class="tip">装 App 后，到点由系统闹钟直接提醒，无需保持页面打开、不依赖 Google 推送，国内网络可用。</div>
 
+<p>主界面按 <b>分类 → 分组</b> 两级展示任务：每个任务带「每日刷新」角标，蓝色表示今天已完成，红色数字表示剩余提醒次数；「添加任务」按钮固定显示在当前分类的<b>最后一个分组</b>里，点击按钮即记录一次完成，长按可管理。</p>
+<div class="thumbs">
+  <div class="thumb">
+    <img src="docs/real-app-tasks.jpg" alt="App 主界面真机截图" loading="lazy">
+    <div class="t-cap">App 主界面<br>分组任务 + 每日刷新 + 完成统计</div>
+  </div>
+  <div class="thumb">
+    <img src="docs/real-float-tasks.jpg" alt="悬浮面板任务页真机截图" loading="lazy">
+    <div class="t-cap">悬浮面板 · 任务页<br>顺序与主界面一致，点击即完成</div>
+  </div>
+</div>
+
+<p>从任意页面唤出<b>悬浮球</b>，面板内「任务」标签与主界面按相同分组顺序排列，点一下就记录完成；带倒计时的任务（如「8 小时后清零」）到点自动归零，适合抢购、签到类每日任务。</p>
+
+
 <h2>三、跨设备剪贴板同步 <span class="badge">亮点</span></h2>
 <ul>
   <li>复制一条，其他设备 <b>秒级出现</b>（WebSocket 实时推送 + 轮询兜底）。</li>
@@ -65,6 +87,13 @@
   <li>删除采用 <b>墓碑机制</b>：多端同步消失，不会再「复活」。</li>
   <li>悬浮球一键展开，复制即存、点击即填。</li>
 </ul>
+<p>悬浮面板的「剪贴板」标签里，「<b>提交</b>」把手机当前剪贴板内容上传云端的「<b>同步</b>」拉取其他设备刚复制的记录；列表显示条数与页码，<b>点任意一条即复制到本机</b>，底部可翻页浏览历史记录。</p>
+<div class="thumbs">
+  <div class="thumb">
+    <img src="docs/real-float-clip.jpg" alt="悬浮面板剪贴板页真机截图" loading="lazy">
+    <div class="t-cap">悬浮面板 · 剪贴板页<br>提交 / 同步 + 点击复制 + 翻页</div>
+  </div>
+</div>
 
 <img class="shot" src="docs/03-float.png" alt="悬浮面板">
 <p class="cap">悬浮面板 · 剪贴板 / 任务双标签，随时展开</p>
@@ -91,6 +120,24 @@
 </div>
 
 <div class="note">提示：iOS / 电脑添加的是「网页版」入口；要系统闹钟提醒与悬浮球，请安装安卓 / 鸿蒙 App。</div>
+
+<div id="lightbox"><img id="lightbox-img" src="" alt="预览大图"></div>
+<script>
+  (function () {
+    var lb = document.getElementById('lightbox');
+    var lbImg = document.getElementById('lightbox-img');
+    document.querySelectorAll('.thumb img, .shot').forEach(function (img) {
+      img.addEventListener('click', function () {
+        lbImg.src = img.src;
+        lb.style.display = 'flex';
+      });
+    });
+    lb.addEventListener('click', function () { lb.style.display = 'none'; });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') lb.style.display = 'none';
+    });
+  })();
+</script>
 
 </body>
 </html>
