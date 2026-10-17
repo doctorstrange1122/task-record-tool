@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
@@ -128,6 +129,9 @@ public class JsBridge {
                 showToast("悬浮窗启动失败");
                 return false;
             }
+            /* 开启悬浮窗时一并引导稳定性设置：电池优化豁免 + 精确闹钟权限，
+               这是华为 / 鸿蒙 / Doze 下悬浮球不被回收、心跳准点的前提 */
+            guideStabilityIfNeeded();
             return true;
         } else {
             FloatingPrefs.setEnabled(c, false);
@@ -148,6 +152,63 @@ public class JsBridge {
     public boolean floatingEnabled() {
         Context c = ctx();
         return c != null && FloatingPrefs.isEnabled(c);
+    }
+
+    /* ================= 稳定性 / 保活引导 ================= */
+
+    /** 是否已关闭电池优化（豁免 Doze 对前台服务与心跳闹钟的节流） */
+    @JavascriptInterface
+    public boolean batteryOptimizationIgnored() {
+        Context c = ctx();
+        if (c == null) return true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            return pm != null && pm.isIgnoringBatteryOptimizations(c.getPackageName());
+        }
+        return true;
+    }
+
+    /** 跳转系统「忽略电池优化」设置页（用户确认后，Doze 不再节流本应用） */
+    @JavascriptInterface
+    public boolean requestIgnoreBatteryOptimizations() {
+        Context c = ctx();
+        if (c == null) return false;
+        ui(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:" + c.getPackageName()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    c.startActivity(i);
+                }
+            } catch (Exception e) {
+                try {
+                    c.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + c.getPackageName()))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (Exception ignore) {
+                }
+            }
+        });
+        return true;
+    }
+
+    /**
+     * 开启悬浮窗时依次补齐最关键的保活条件：先引导关闭电池优化（最影响 Doze 节流），
+     * 若已豁免再引导授予「精确闹钟」权限（保证 60 秒心跳准点）。两者都不强制，用户可跳过。
+     */
+    private void guideStabilityIfNeeded() {
+        final Context c = ctx();
+        if (c == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !batteryOptimizationIgnored()) {
+            showToast("建议关闭电池优化，避免悬浮球被系统回收");
+            requestIgnoreBatteryOptimizations();
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !exactAlarmAllowed()) {
+            showToast("建议允许「精确闹钟」，保证心跳准点");
+            openExactAlarmSettings();
+        }
     }
 
     /* ================= 系统提醒 ================= */
