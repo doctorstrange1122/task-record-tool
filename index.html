@@ -887,7 +887,9 @@
   /* 云同步服务地址（部署 Cloudflare Worker 后填入，为空时仅本地模式） */
   var API_BASE = 'https://task-record-api.pages.dev';
   /* App（APK）下载链接：安卓 / 鸿蒙设备装上它，提醒由系统闹钟承载，关掉页面也能响 */
-  var APK_DOWNLOAD_URL = 'https://doctorstrange1122.github.io/task-record-tool/task.apk';
+  /* 加速主链接走 jsDelivr CDN（国内访问更快），原 GitHub Pages 链接作兜底 */
+  var APK_DOWNLOAD_URL = 'https://cdn.jsdelivr.net/gh/doctorstrange1122/task-record-tool@main/task.apk';
+  var APK_DOWNLOAD_URL_FALLBACK = 'https://doctorstrange1122.github.io/task-record-tool/task.apk';
   /* 是否运行在 App 内（APK 的 WebView 会带 app=1 参数或 UA 标记） */
   var IN_APP = /[?&]app=1/.test(location.search) ||
                /TaskReminderApp/.test(navigator.userAgent || '');
@@ -2839,20 +2841,21 @@
         } else {
           apkBox.style.cssText = 'margin:10px 0 2px;padding:10px 12px;border-radius:10px;' +
             'background:#FFF4E6;border:1px solid #FFD8A8;font-size:12.5px;line-height:1.6;color:#8A4B08;';
-          apkBox.innerHTML = '<strong>安卓 / 鸿蒙设备使用完整提醒功能，请下载 App</strong><br>' +
+          apkBox.innerHTML = '<strong>安卓 / 鸿蒙设备使用完整功能，请下载 App</strong><br>' +
             '网页版在后台或关闭时无法提醒（浏览器限制）。<br>' +
-            '装 App 后，到点由<strong>系统闹钟</strong>直接提醒，无需保持页面打开。';
+            '装 App 后：<strong>系统闹钟</strong>准时提醒、<strong>悬浮球</strong>随取随用、' +
+            '<strong>跨设备剪贴板</strong>实时同步，无需保持页面打开。';
         }
         sheet.appendChild(apkBox);
 
         var dl = document.createElement('button');
         dl.type = 'button';
-        dl.textContent = '↓ 下载 App（APK）';
+        dl.textContent = '↓ 下载 App（APK 加速）';
         dl.style.cssText = 'display:block;text-align:center;margin:8px 0 2px;padding:9px 0;' +
           'border:none;border-radius:10px;background:#FF7A00;color:#fff;text-decoration:none;' +
           'font-size:13.5px;font-weight:600;cursor:pointer;';
         if (IN_APP) dl.style.display = 'none';
-        dl.addEventListener('click', function () { toast('暂未上线'); });
+        dl.addEventListener('click', triggerApkDownload);
         sheet.appendChild(dl);
       }
 
@@ -3593,6 +3596,24 @@
     toastTimer = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2000);
   }
 
+  /* 触发 APK 下载：优先 jsDelivr 加速链接，失败可手动用兜底链接 */
+  function triggerApkDownload() {
+    var started = false;
+    try {
+      var a = document.createElement('a');
+      a.href = APK_DOWNLOAD_URL;
+      a.download = 'task.apk';
+      a.rel = 'noopener';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      started = true;
+    } catch (e) { started = false; }
+    if (!started) window.open(APK_DOWNLOAD_URL, '_blank');
+    toast('已开始下载，若未自动开始请使用下方备用链接');
+  }
+
   /* ============ 下载 App（安卓 / 鸿蒙） ============ */
   function openAppDownloadDialog() {
     openModal(function (sheet, close) {
@@ -3606,18 +3627,30 @@
       why.innerHTML = '网页版提醒需要页面保持运行；切到后台或关闭后，' +
         '<strong>浏览器会冻结页面的 JS</strong>，这是所有浏览器的安全设计，' +
         '靠系统设置无法解除（华为浏览器更进一步，连网站通知权限都不开放）。<br><br>' +
-        '装上 App 后，提醒改由<strong>系统闹钟（AlarmManager）</strong>直接触发通知：' +
-        '<br>• 无需保持页面打开<br>• 不依赖 Google 推送服务<br>• 国内网络可正常使用';
+        '装上 App 后，提醒与效率能力全面升级：' +
+        '<br>• <strong>系统闹钟提醒</strong>：由 AlarmManager 直接触发，无需保持页面打开、不依赖 Google 推送' +
+        '<br>• <strong>悬浮球快捷入口</strong>：进程外心跳 + 亮屏自愈保活，随时点开记录与提醒（已加固防消失）' +
+        '<br>• <strong>跨设备剪贴板</strong>：手机复制、电脑粘贴，数据经 Cloudflare 实时同步' +
+        '<br>• <strong>国内网络可用</strong>：提醒与同步均不依赖境外服务';
       sheet.appendChild(why);
 
       var dl = document.createElement('button');
       dl.type = 'button';
-      dl.textContent = '↓ 下载 APK 安装包';
+      dl.textContent = '↓ 下载 APK 安装包（加速）';
       dl.style.cssText = 'display:block;text-align:center;margin:12px 0 4px;padding:11px 0;' +
         'border:none;border-radius:10px;background:#FF7A00;color:#fff;' +
         'font-size:14px;font-weight:600;cursor:pointer;';
-      dl.addEventListener('click', function () { toast('暂未上线'); });
+      dl.addEventListener('click', triggerApkDownload);
       sheet.appendChild(dl);
+
+      var fb = document.createElement('a');
+      fb.href = APK_DOWNLOAD_URL_FALLBACK;
+      fb.target = '_blank';
+      fb.rel = 'noopener';
+      fb.textContent = '下载较慢？点此用备用链接';
+      fb.style.cssText = 'display:block;text-align:center;margin:2px 0 4px;font-size:12px;' +
+        'color:#FF7A00;text-decoration:underline;cursor:pointer;';
+      sheet.appendChild(fb);
 
       var note = document.createElement('p');
       note.className = 'hint';
