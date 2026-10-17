@@ -1,0 +1,20 @@
+name = "task-record-api"
+compatibility_date = "2025-09-01"
+pages_build_output_dir = "public"
+
+# 部署：npx wrangler pages deploy public --project-name task-record-api --branch main
+# 本地：npx wrangler pages dev public --ip 127.0.0.1 --port 8788
+
+[[d1_databases]]
+binding = "DB"
+database_name = "task-record-db"
+database_id = "083774d9-472d-46cd-ae25-d2a7172a197f"
+migrations_dir = "migrations"
+
+# 实时推送：绑定到独立 Worker「task-record-realtime」中的 Durable Object。
+# 这是 Cloudflare 内部调用（绑定），不走公网、不经过 workers.dev；
+# 客户端只访问 task-record-api.pages.dev。
+[[durable_objects.bindings]]
+name = "SYNC_HUB"
+class_name = "SyncHub"
+script_name = "task-record-realtime"
