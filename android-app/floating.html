@@ -333,6 +333,13 @@
     margin: 10px 2px 6px;
   }
   .fp-cat-name:first-child { margin-top: 0; }
+  .fp-group-name {
+    font-size: 10px;
+    color: var(--muted);
+    margin: 8px 2px 4px;
+    font-weight: 600;
+    opacity: 0.85;
+  }
   .fp-task-item {
     display: flex;
     align-items: center;
@@ -970,14 +977,51 @@
 
     var anyTask = false;
     (acc.categories || []).forEach(function (cat) {
-      var tasks = (cat.tasks || []).filter(function (t) { return t.configured; });
-      if (!tasks.length) return;
+      /* 与主界面一致：按分组顺序渲染（分组内保持原有任务顺序），不再按创建顺序平铺 */
+      var UNG = '__ungrouped__';
+      var subs = cat.subcats || [];
+      var buckets = [];
+      if (!subs.length) {
+        buckets.push({ name: '', tasks: (cat.tasks || []).slice() });
+      } else {
+        var onlyDefaultUng = subs.length === 1 &&
+          subs[0].id === UNG && (subs[0].name || '未分组') === '未分组';
+        subs.forEach(function (sc) {
+          var isUng = sc.id === UNG;
+          buckets.push({
+            name: (isUng && onlyDefaultUng) ? '' : (sc.name || '未分组'),
+            tasks: (cat.tasks || []).filter(function (t) {
+              return isUng ? !t.subId : t.subId === sc.id;
+            })
+          });
+        });
+        /* 兜底：subId 指向已删除分组（或数据里缺「未分组」条目）的任务不丢 */
+        var known = {};
+        subs.forEach(function (s) { known[s.id] = true; });
+        var rest = (cat.tasks || []).filter(function (t) {
+          return t.subId ? !known[t.subId] : !known[UNG];
+        });
+        if (rest.length) buckets.push({ name: '未分组', tasks: rest });
+      }
+      var hasTask = buckets.some(function (b) {
+        return b.tasks.some(function (t) { return t.configured; });
+      });
+      if (!hasTask) return;
       anyTask = true;
       var catName = document.createElement('div');
       catName.className = 'fp-cat-name';
       catName.textContent = cat.name;
       body.appendChild(catName);
-      tasks.forEach(function (t) {
+      buckets.forEach(function (b) {
+        var list = b.tasks.filter(function (t) { return t.configured; });
+        if (!list.length) return;
+        if (b.name) {
+          var gh = document.createElement('div');
+          gh.className = 'fp-group-name';
+          gh.textContent = b.name;
+          body.appendChild(gh);
+        }
+        list.forEach(function (t) {
         var row = document.createElement('button');
         row.type = 'button';
         row.className = 'fp-task-item' + (t.count > 0 ? ' done' : '');
@@ -1000,6 +1044,7 @@
           syncRemindersToNative(); /* 周期起点可能变化：重排系统闹钟 */
         });
         body.appendChild(row);
+        });
       });
     });
 
