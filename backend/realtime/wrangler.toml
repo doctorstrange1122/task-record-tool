@@ -1,0 +1,19 @@
+name = "task-record-realtime"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# 关闭 workers.dev 公网路由（国内基本不可达）。
+# 本 Worker 只作为 Durable Object 的宿主，由 Pages Functions 通过「绑定」在 Cloudflare 内部调用，
+# 客户端永远只访问 task-record-api.pages.dev，不经过 workers.dev。
+workers_dev = false
+
+# Durable Objects：每个用户一个 SyncHub 实例，持有该用户所有设备的 WebSocket
+[durable_objects]
+bindings = [
+  { name = "SYNC_HUB", class_name = "SyncHub" }
+]
+
+# 免费计划仅支持 SQLite 存储后端
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SyncHub"]
