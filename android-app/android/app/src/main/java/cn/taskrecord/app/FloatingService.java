@@ -71,7 +71,7 @@ public class FloatingService extends android.app.Service {
     private static final int CLICK_SLOP = 12;
 
     /* ===== 保活/自愈：部分机型（尤其鸿蒙/EMUI）会回收前台服务的悬浮窗 ===== */
-    private static final long WATCH_INTERVAL_MS = 15_000L;   /* 看门狗巡检间隔 */
+    private static final long WATCH_INTERVAL_MS = 10_000L;   /* 看门狗巡检间隔 */
     private static final int RC_RESTART = 10086;
     /* 进程外心跳：闹钟是系统级的，即使本进程被冻结 / 被杀，也能把服务唤回来 */
     public static final String ACTION_HEARTBEAT = "cn.taskrecord.app.FLOATING_HEARTBEAT";
@@ -187,23 +187,45 @@ public class FloatingService extends android.app.Service {
         }
     }
 
-    /** 排下一次心跳闹钟（显式广播，进程被杀也能唤回服务） */
+    /** 排下一次心跳闹钟（由 AlarmManager 直接拉起本前台服务，进程被杀也能唤回，且不触发后台启动 FGS 限制） */
     public static void scheduleHeartbeat(Context ctx) {
         if (ctx == null) return;
         Context app = ctx.getApplicationContext();
         if (!FloatingPrefs.isEnabled(app)) return;
         try {
-            Intent i = new Intent(app, FloatingWatchdog.class).setAction(ACTION_HEARTBEAT);
+            Intent i = new Intent(app, FloatingService.class).setAction(ACTION_HEARTBEAT);
             int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-            PendingIntent pi = PendingIntent.getBroadcast(app, RC_HEARTBEAT, i, flags);
+            PendingIntent pi = PendingIntent.getForegroundService(app, RC_HEARTBEAT, i, flags);
             AlarmManager am = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
             long at = System.currentTimeMillis() + HEARTBEAT_INTERVAL_MS;
+            setExactOrInexact(am, at, pi);
+        } catch (Exception ignore) {
+        }
+    }
+
+    /**
+     * 设置闹钟：优先精确且 Doze 允许（setExactAndAllowWhileIdle）；
+     * 若未获 SCHEDULE_EXACT_ALARM 权限会抛 SecurityException，降级为 setAndAllowWhileIdle
+     * （仍允许在 Doze 中触发，只是不精确），再不行才退到普通 set。
+     */
+    private static void setExactOrInexact(AlarmManager am, long at, PendingIntent pi) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+                return;
+            } catch (SecurityException e) {
+                /* 未授权精确闹钟：降级 */
             } catch (Exception e) {
-                am.set(AlarmManager.RTC_WAKEUP, at, pi);
             }
+            try {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+                return;
+            } catch (Exception e) {
+            }
+        }
+        try {
+            am.set(AlarmManager.RTC_WAKEUP, at, pi);
         } catch (Exception ignore) {
         }
     }
@@ -216,8 +238,8 @@ public class FloatingService extends android.app.Service {
             AlarmManager am = (AlarmManager) app.getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
             int flags = PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE;
-            PendingIntent hb = PendingIntent.getBroadcast(app, RC_HEARTBEAT,
-                    new Intent(app, FloatingWatchdog.class).setAction(ACTION_HEARTBEAT), flags);
+            PendingIntent hb = PendingIntent.getForegroundService(app, RC_HEARTBEAT,
+                    new Intent(app, FloatingService.class).setAction(ACTION_HEARTBEAT), flags);
             if (hb != null) {
                 am.cancel(hb);
                 hb.cancel();
