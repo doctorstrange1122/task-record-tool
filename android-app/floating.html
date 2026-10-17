@@ -462,13 +462,23 @@
             Array.isArray(d.accounts[0].categories)) {
           if (!Array.isArray(d.clipboards)) d.clipboards = [];
           else d.clipboards = d.clipboards.filter(clipFresh);
+          /* 墓碑：保留已删除记录的 id，避免「删除后又复活」 */
+          if (!Array.isArray(d.clipTombstones)) d.clipTombstones = [];
+          else {
+            var now = Date.now();
+            d.clipTombstones = d.clipTombstones.filter(function (t) { return t && (now - (t.at || 0)) < 30 * DAY; });
+            var tombIds = {};
+            d.clipTombstones.forEach(function (t) { if (t && t.id) tombIds[t.id] = 1; });
+            d.clipboards = d.clipboards.filter(function (c) { return c && !tombIds[c.id]; });
+          }
           return d;
         }
       }
     } catch (e) {}
-    return { activeAccountId: null, accounts: [], clipboards: [] };
+    return { activeAccountId: null, accounts: [], clipboards: [], clipTombstones: [] };
   }
   function save() {
+    pruneTombstones();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
     scheduleSync(800);
   }
@@ -479,6 +489,7 @@
   var CLIP_KEEP_MAX = 200;          /* 最多保留 200 条 */
   var CLIP_KEEP_MAX_CHARS = 120000; /* 剪贴板文本总量安全阀（约 240KB）：防止整包超过服务端 512KB 上限 */
   function pruneClipboards() {
+    pruneTombstones();
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
     var list = data.clipboards.filter(clipFresh);
@@ -528,14 +539,25 @@
   function writeLocal() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
   }
-  /* 剪贴板按 id 求并集（冲突/拉取时避免丢记录），最多保留 60 条 */
-  function mergeClipboards(a, b) {
+  /* 剪贴板按 id 求并集（冲突/拉取时避免丢记录），但墓碑标记的记录一律移除，最多保留 200 条 */
+  function mergeClipboards(a, b, tombSet) {
     var map = {};
     (b || []).forEach(function (c) { if (c && c.id) map[c.id] = c; });
     (a || []).forEach(function (c) { if (c && c.id) map[c.id] = c; });
-    var out = Object.keys(map).map(function (k) { return map[k]; });
+    var tomb = tombSet || {};
+    var out = Object.keys(map)
+      .filter(function (k) { return !tomb[k]; })
+      .map(function (k) { return map[k]; });
     out.sort(function (x, y) { return y.at - x.at; });
-    return out.slice(0, 60);
+    return out.slice(0, CLIP_KEEP_MAX);
+  }
+  function pruneTombstones() {
+    if (!Array.isArray(data.clipTombstones)) { data.clipTombstones = []; return false; }
+    var now = Date.now();
+    var before = data.clipTombstones.length;
+    data.clipTombstones = data.clipTombstones.filter(function (t) { return t && (now - (t.at || 0)) < 30 * DAY; });
+    if (data.clipTombstones.length > 2000) data.clipTombstones = data.clipTombstones.slice(-2000);
+    return data.clipTombstones.length !== before;
   }
   function scheduleSync(delay) {
     if (suppressSync) return;
@@ -564,7 +586,9 @@
     return put().then(function (r) {
       if (!r.conflict) return r;
       return pullData(true, true).then(function () {
-        data.clipboards = mergeClipboards(localClips, data.clipboards);
+        var tombSet = {};
+        (data.clipTombstones || []).forEach(function (t) { if (t.id) tombSet[t.id] = 1; });
+        data.clipboards = mergeClipboards(localClips, data.clipboards, tombSet);
         writeLocal();
         return put();
       });
@@ -581,10 +605,20 @@
         var newer = serverAt > (auth.lastSync || 0);
         if (r.data && (force || newer)) {
           var localClips = (data.clipboards || []).slice();
+          var localTomb = (data.clipTombstones || []).slice();
           suppressSync = true;
           data = r.data;
           if (!Array.isArray(data.clipboards)) data.clipboards = [];
-          data.clipboards = mergeClipboards(localClips, data.clipboards);
+          if (!Array.isArray(data.clipTombstones)) data.clipTombstones = [];
+          /* 合并墓碑：本机已删除 + 云端已删除，取并集 */
+          var seen = {}, merged = [];
+          localTomb.concat(data.clipTombstones).forEach(function (t) {
+            if (t && t.id && !seen[t.id]) { seen[t.id] = 1; merged.push({ id: t.id, at: t.at || 0 }); }
+          });
+          data.clipTombstones = merged;
+          var tombSet = {};
+          merged.forEach(function (t) { if (t.id) tombSet[t.id] = 1; });
+          data.clipboards = mergeClipboards(localClips, data.clipboards, tombSet);
           pruneClipboards();
           if (newer) auth.lastSync = serverAt;
           saveAuth();
