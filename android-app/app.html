@@ -875,6 +875,8 @@
   .me-row-desc { font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 400; }
   .me-row-tip { padding: 0 2px 10px; }
   .me-row-value { font-size: 13px; color: var(--muted); }
+  .me-row-click { cursor: pointer; transition: background .12s; }
+  .me-row-click:active { background: var(--field-bg); }
   .me-seg { display: flex; background: var(--field-bg); border-radius: 10px; padding: 3px; gap: 2px; }
   .me-seg-btn {
     border: none; background: none; padding: 6px 12px; border-radius: 8px;
@@ -1533,6 +1535,248 @@
     var t = token || (auth && auth.token);
     if (t) headers['Authorization'] = 'Bearer ' + t;
     return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+  }
+
+  /* ================= 反馈 / 管理员（「我的」扩展） ================= */
+  const ADMIN_USERNAME = '1473949160';
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* 把图片文件压缩为 ≤ maxBytes 的 base64 data url（jpeg） */
+  function compressImageToDataURL(file, maxBytes, cb) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var maxDim = 1280;
+        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        var quality = 0.8;
+        var dataUrl = canvas.toDataURL('image/jpeg', quality);
+        while (dataUrl.length > maxBytes && quality > 0.3) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+        cb(null, dataUrl);
+      };
+      img.onerror = function () { cb(new Error('图片解析失败')); };
+      img.src = reader.result;
+    };
+    reader.onerror = function () { cb(new Error('读取图片失败')); };
+    reader.readAsDataURL(file);
+  }
+
+  /* 提交反馈弹窗：文字 + 可选图片 */
+  function openFeedbackDialog() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '提交反馈 / 报 Bug';
+      sheet.appendChild(h);
+      var tip = document.createElement('p');
+      tip.className = 'hint';
+      tip.style.marginBottom = '10px';
+      tip.textContent = '描述你遇到的问题，可附一张截图（≤1MB，自动压缩）。';
+      sheet.appendChild(tip);
+
+      var ta = document.createElement('textarea');
+      ta.placeholder = '请描述问题…';
+      ta.maxLength = 2000;
+      ta.style.width = '100%';
+      ta.style.minHeight = '90px';
+      ta.style.boxSizing = 'border-box';
+      sheet.appendChild(ta);
+
+      var fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.style.margin = '10px 0';
+      sheet.appendChild(fileInput);
+
+      var preview = document.createElement('img');
+      preview.style.maxWidth = '100%';
+      preview.style.borderRadius = '8px';
+      preview.style.display = 'none';
+      preview.style.marginBottom = '10px';
+      sheet.appendChild(preview);
+
+      var imgData = null;
+      fileInput.addEventListener('change', function () {
+        var f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        if (f.size > 6 * 1024 * 1024) {
+          toast('原图过大，请选择 ≤6MB 的图片');
+          fileInput.value = '';
+          return;
+        }
+        compressImageToDataURL(f, 1400000, function (err, d) {
+          if (err) { toast(err.message); return; }
+          imgData = d;
+          preview.src = d;
+          preview.style.display = 'block';
+        });
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 'sheet-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-ghost';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', close);
+      var okBtn = document.createElement('button');
+      okBtn.className = 'btn btn-primary';
+      okBtn.textContent = '提交';
+      okBtn.addEventListener('click', function () {
+        var content = ta.value.trim();
+        if (!content) { toast('请填写反馈内容'); return; }
+        okBtn.disabled = true;
+        okBtn.textContent = '提交中…';
+        apiFetch('/api/feedback', {
+          method: 'POST',
+          body: JSON.stringify({ content: content, image: imgData })
+        }).then(function (res) { return res.json(); }).then(function (r) {
+          if (r.ok) { toast('反馈已提交，感谢！'); close(); }
+          else { toast(r.error || '提交失败'); okBtn.disabled = false; okBtn.textContent = '提交'; }
+        }).catch(function () {
+          toast('网络异常，提交失败');
+          okBtn.disabled = false; okBtn.textContent = '提交';
+        });
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      sheet.appendChild(actions);
+    });
+  }
+
+  /* 管理员：反馈汇总弹窗 */
+  function openAdminFeedbackDialog() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '反馈汇总（管理员）';
+      sheet.appendChild(h);
+      var list = document.createElement('div');
+      list.style.maxHeight = '70vh';
+      list.style.overflowY = 'auto';
+      list.style.marginTop = '8px';
+      list.textContent = '加载中…';
+      sheet.appendChild(list);
+
+      apiFetch('/api/feedback').then(function (res) { return res.json(); }).then(function (r) {
+        if (!r.ok) { list.textContent = r.error || '加载失败'; return; }
+        list.textContent = '';
+        var head = document.createElement('p');
+        head.className = 'hint';
+        head.style.marginBottom = '8px';
+        head.textContent = '共 ' + r.count + ' 条反馈';
+        list.appendChild(head);
+        if (!r.items || !r.items.length) {
+          list.appendChild(document.createTextNode('暂无反馈'));
+          return;
+        }
+        r.items.forEach(function (it) {
+          var card = document.createElement('div');
+          card.style.border = '1px solid #eee';
+          card.style.borderRadius = '8px';
+          card.style.padding = '10px';
+          card.style.marginBottom = '10px';
+          var meta = document.createElement('div');
+          meta.style.fontSize = '12px';
+          meta.style.color = '#888';
+          meta.style.marginBottom = '4px';
+          meta.textContent = it.username + ' · ' + new Date(it.created_at).toLocaleString();
+          card.appendChild(meta);
+          var c = document.createElement('div');
+          c.style.whiteSpace = 'pre-wrap';
+          c.style.fontSize = '14px';
+          c.textContent = it.content;
+          card.appendChild(c);
+          if (it.image) {
+            var im = document.createElement('img');
+            im.src = it.image;
+            im.style.maxWidth = '100%';
+            im.style.marginTop = '6px';
+            im.style.borderRadius = '6px';
+            card.appendChild(im);
+          }
+          list.appendChild(card);
+        });
+      }).catch(function () { list.textContent = '网络异常，加载失败'; });
+    });
+  }
+
+  /* 管理员：注册账号管理弹窗（汇总 + 单账号删除） */
+  function openAdminUsersDialog() {
+    openModal(function (sheet, close) {
+      var h = document.createElement('h3');
+      h.textContent = '注册账号管理（管理员）';
+      sheet.appendChild(h);
+      var list = document.createElement('div');
+      list.style.maxHeight = '70vh';
+      list.style.overflowY = 'auto';
+      list.style.marginTop = '8px';
+      list.textContent = '加载中…';
+      sheet.appendChild(list);
+
+      function load() {
+        apiFetch('/api/admin/users').then(function (res) { return res.json(); }).then(function (r) {
+          if (!r.ok) { list.textContent = r.error || '加载失败'; return; }
+          list.textContent = '';
+          var head = document.createElement('p');
+          head.className = 'hint';
+          head.style.marginBottom = '8px';
+          head.textContent = '注册总数：' + r.count + ' 个账号';
+          list.appendChild(head);
+          if (!r.users || !r.users.length) {
+            list.appendChild(document.createTextNode('暂无注册账号'));
+            return;
+          }
+          r.users.forEach(function (u) {
+            var row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.border = '1px solid #eee';
+            row.style.borderRadius = '8px';
+            row.style.padding = '8px 10px';
+            row.style.marginBottom = '8px';
+            var info = document.createElement('div');
+            info.style.fontSize = '14px';
+            info.innerHTML = '<b>' + escapeHtml(u.username) + '</b>' +
+              (u.nickname ? '（' + escapeHtml(u.nickname) + '）' : '') +
+              '<br><span style="font-size:12px;color:#888">' +
+              new Date(u.created_at).toLocaleString() + '</span>';
+            row.appendChild(info);
+            var del = document.createElement('button');
+            del.className = 'btn btn-danger';
+            del.style.padding = '4px 10px';
+            del.style.fontSize = '12px';
+            del.textContent = '删除';
+            del.addEventListener('click', function () {
+              openConfirmDialog('删除账号', '确认删除账号 ' + u.username +
+                '？该账号及其所有云端数据将被清除，不可恢复。', function () {
+                apiFetch('/api/admin/users', {
+                  method: 'DELETE',
+                  body: JSON.stringify({ username: u.username })
+                }).then(function (res) { return res.json(); }).then(function (rr) {
+                  if (rr.ok) { toast('已删除 ' + u.username); load(); }
+                  else toast(rr.error || '删除失败');
+                }).catch(function () { toast('网络异常'); });
+              });
+            });
+            row.appendChild(del);
+            list.appendChild(row);
+          });
+        }).catch(function () { list.textContent = '网络异常，加载失败'; });
+      }
+      load();
+    });
   }
 
   function loadAuth() {
@@ -2657,6 +2901,52 @@
     syncLabel.appendChild(syncDesc);
     syncRow.appendChild(syncLabel);
     funcCard.appendChild(syncRow);
+
+    /* 反馈入口（登录后可见） */
+    if (auth) {
+      var fbRow = document.createElement('div');
+      fbRow.className = 'me-row me-row-click';
+      var fbLabel = document.createElement('div');
+      fbLabel.className = 'me-row-label';
+      fbLabel.textContent = '提交反馈 / 报 Bug';
+      var fbVal = document.createElement('div');
+      fbVal.className = 'me-row-value';
+      fbVal.textContent = '›';
+      fbRow.appendChild(fbLabel);
+      fbRow.appendChild(fbVal);
+      fbRow.addEventListener('click', function () { openFeedbackDialog(); });
+      funcCard.appendChild(fbRow);
+    }
+
+    /* 管理员专属入口 */
+    if (auth && auth.username === ADMIN_USERNAME) {
+      var afbRow = document.createElement('div');
+      afbRow.className = 'me-row me-row-click';
+      var afbLabel = document.createElement('div');
+      afbLabel.className = 'me-row-label';
+      afbLabel.textContent = '查看反馈（汇总）';
+      var afbVal = document.createElement('div');
+      afbVal.className = 'me-row-value';
+      afbVal.textContent = '›';
+      afbRow.appendChild(afbLabel);
+      afbRow.appendChild(afbVal);
+      afbRow.addEventListener('click', function () { openAdminFeedbackDialog(); });
+      funcCard.appendChild(afbRow);
+
+      var admRow = document.createElement('div');
+      admRow.className = 'me-row me-row-click';
+      var admLabel = document.createElement('div');
+      admLabel.className = 'me-row-label';
+      admLabel.textContent = '注册账号管理';
+      var admVal = document.createElement('div');
+      admVal.className = 'me-row-value';
+      admVal.textContent = '›';
+      admRow.appendChild(admLabel);
+      admRow.appendChild(admVal);
+      admRow.addEventListener('click', function () { openAdminUsersDialog(); });
+      funcCard.appendChild(admRow);
+    }
+
     main.appendChild(funcCard);
 
     /* ===== 关于 ===== */
