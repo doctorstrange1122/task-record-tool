@@ -5,18 +5,14 @@ import android.content.Context;
 import android.content.Intent;
 
 /**
- * 悬浮球「进程外」心跳看门狗。
+ * 悬浮球进程外看护接收器（亮屏 / 解锁即时恢复）。
  *
- * 背景：Service 内的 Handler 看门狗、以及 onDestroy / onTaskRemoved 里排的重启闹钟，
- * 都要求「进程还活着，并且那段代码真的被执行到」。华为 / 鸿蒙在内存紧张或开启
- * 「应用速冻」后，会直接把进程冻结甚至 SIGKILL：
- *   · 进程被冻结 → Handler 停摆，overlay 窗口被系统回收后没人修复；
- *   · 进程被直接杀掉 → 不走 onDestroy，那些「延迟重启」根本不会被排上。
- * 结果就是悬浮球一直消失、再也回不来。
+ * 说明：周期性心跳闹钟现在由 AlarmManager 直接拉起 FloatingService（getForegroundService），
+ * 不经由本接收器，以避免 Android 12+ 后台启动前台服务的限制。详见 FloatingService.scheduleHeartbeat。
  *
- * 本接收器由 AlarmManager 的显式闹钟（约 60 秒一次）唤醒，亮屏 / 解锁时也会被触发。
- * 闹钟是系统级能力，不依赖本进程存活：到点就把进程拉起，这里立刻检查并恢复悬浮球，
- * 然后重排下一次心跳，形成持续的进程外看护。
+ * 本接收器只负责「用户点亮屏幕 / 解锁」这两个最贴近使用场景的时机，让已在运行（但可能
+ * 因冻结导致 overlay 被回收、或球被留在隐藏态）的服务立刻巡检并恢复悬浮球；若服务进程
+ * 已死，则顺手拉起。亮屏即恢复，无需等到下一个 60 秒心跳，体验上「想用时球就在」。
  */
 public class FloatingWatchdog extends BroadcastReceiver {
 
