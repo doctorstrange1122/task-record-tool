@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 引导用户关闭电池优化（豁免 Doze 对前台服务 / 心跳闹钟的节流），提升悬浮球存活 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- 悬浮窗：前台服务 + 悬浮球 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -61,13 +63,12 @@
             android:name=".ReminderReceiver"
             android:exported="false" />
 
-        <!-- 悬浮球进程外心跳看门狗：闹钟/亮屏唤醒，专门应对「进程被冻结或被杀后悬浮球消失」 -->
+        <!-- 悬浮球亮屏/解锁即时恢复：点亮屏幕或解锁时让运行中的服务立刻巡检并恢复球 -->
         <receiver
             android:name=".FloatingWatchdog"
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="cn.taskrecord.app.FLOATING_HEARTBEAT" />
                 <action android:name="android.intent.action.SCREEN_ON" />
                 <action android:name="android.intent.action.USER_PRESENT" />
             </intent-filter>
