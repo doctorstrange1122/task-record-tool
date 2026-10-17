@@ -1885,7 +1885,8 @@
         /* 只有一个「未分组」且未改名时，主界面隐藏该分组名（管理界面仍可看到并改名） */
         var onlyDefaultUng = cat.subcats.length === 1 &&
           cat.subcats[0].id === UNG_ID && (cat.subcats[0].name || '未分组') === '未分组';
-        cat.subcats.forEach(function (sc) {
+        var lastIdx = cat.subcats.length - 1;
+        cat.subcats.forEach(function (sc, idx) {
           var isUng = sc.id === UNG_ID;
           var scTasks = isUng
             ? cat.tasks.filter(function (t) { return !t.subId; })
@@ -1896,7 +1897,8 @@
             sh.textContent = sc.name;
             section.appendChild(sh);
           }
-          section.appendChild(buildTaskGrid(cat, scTasks, isUng, sc.id));
+          /* 「添加任务」固定放在当前分类的最后一个分组里（不再跟随未分组移动） */
+          section.appendChild(buildTaskGrid(cat, scTasks, idx === lastIdx, sc.id));
         });
       }
 
@@ -1985,7 +1987,10 @@
       addLabel.className = 't-name';
       addLabel.textContent = '+ 添加任务';
       addBtn.appendChild(addLabel);
-      addBtn.addEventListener('click', function () { openTaskSetup(null, cat); });
+      addBtn.addEventListener('click', function () {
+        /* 新任务默认归入按钮所在的分组（未分组传 null） */
+        openTaskSetup(null, cat, undefined, (subId && subId !== UNG_ID) ? subId : null);
+      });
       grid.appendChild(addBtn);
     }
     return grid;
@@ -2888,7 +2893,7 @@
   }
 
   /* ================= 任务：设置 / 编辑 / 管理 ================= */
-  function openTaskSetup(task, cat, isNewAddition) {
+  function openTaskSetup(task, cat, isNewAddition, defaultSubId) {
     var isEdit = !!task && task.configured;
     var targetCat = cat;
     if (!targetCat && task) {
@@ -2899,6 +2904,7 @@
       /* 由「添加任务」入口创建的新按钮，先放入分类，取消时移除 */
       targetCat = cat;
       task = newTask();
+      task.subId = defaultSubId || null;
       targetCat.tasks.push(task);
       isNewAddition = true;
     }
@@ -2914,7 +2920,7 @@
           return { value: s.id, label: s.name };
         })
       );
-      fields.push({ key: 'subId', label: '分组', type: 'select', value: isEdit ? (task.subId || '') : '', options: subOptions });
+      fields.push({ key: 'subId', label: '分组', type: 'select', value: isEdit ? (task.subId || '') : (defaultSubId || ''), options: subOptions });
     }
 
     openFormDialog({
