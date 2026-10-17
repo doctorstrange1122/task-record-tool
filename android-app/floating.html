@@ -831,7 +831,7 @@
     var submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.className = 'fp-sync-btn primary';
-    submitBtn.textContent = '提交';
+    submitBtn.textContent = '上传';
     submitBtn.addEventListener('click', function () {
       var text = Native.clipSnapshot().trim();
       if (!text) { toast('剪贴板为空或非文本内容'); return; }
