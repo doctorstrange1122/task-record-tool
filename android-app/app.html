@@ -1006,7 +1006,7 @@
     var cat = { id: genId(), name: '默认分类', tasks: [], subcats: [] };
     for (var i = 0; i < 3; i++) cat.tasks.push(newTask());
     acc.categories.push(cat);
-    return { activeAccountId: acc.id, accounts: [acc], clipboards: [] };
+    return { activeAccountId: acc.id, accounts: [acc], clipboards: [], clipTombstones: [] };
   }
 
   function loadData() {
@@ -1021,6 +1021,15 @@
           else d.clipboards = d.clipboards.filter(function (c) {
             return !!c && typeof c.text === 'string' && (Date.now() - c.at) < CLIP_EXPIRE_MS;
           });
+          /* 墓碑：保留已删除记录的 id，避免「删除后又复活」（多 WebView 同步时尤甚） */
+          if (!Array.isArray(d.clipTombstones)) d.clipTombstones = [];
+          else {
+            var now = Date.now();
+            d.clipTombstones = d.clipTombstones.filter(function (t) { return t && (now - (t.at || 0)) < 30 * DAY; });
+            var tombIds = {};
+            d.clipTombstones.forEach(function (t) { if (t && t.id) tombIds[t.id] = 1; });
+            d.clipboards = d.clipboards.filter(function (c) { return c && !tombIds[c.id]; });
+          }
           return d;
         }
       }
@@ -1046,6 +1055,7 @@
   }
 
   function save() {
+    pruneTombstones();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
     if (!suppressSync) scheduleSync();
   }
@@ -1093,7 +1103,17 @@
   /* 清理过期记录；并限制总条数——防止整包数据无限膨胀，超过服务端 512KB 上限会导致同步整包失败 */
   var CLIP_KEEP_MAX = 200;          /* 最多保留 200 条 */
   var CLIP_KEEP_MAX_CHARS = 120000; /* 剪贴板文本总量安全阀（约 240KB）：防止整包超过服务端 512KB 上限 */
+  function pruneTombstones() {
+    if (!Array.isArray(data.clipTombstones)) { data.clipTombstones = []; return false; }
+    var now = Date.now();
+    var before = data.clipTombstones.length;
+    data.clipTombstones = data.clipTombstones.filter(function (t) { return t && (now - (t.at || 0)) < 30 * DAY; });
+    if (data.clipTombstones.length > 2000) data.clipTombstones = data.clipTombstones.slice(-2000);
+    return data.clipTombstones.length !== before;
+  }
+
   function pruneClipboards() {
+    pruneTombstones();
     if (!Array.isArray(data.clipboards)) { data.clipboards = []; return false; }
     var before = data.clipboards.length;
     var list = data.clipboards.filter(clipFresh);
@@ -1253,8 +1273,14 @@
 
   function deleteClipRecord(id) {
     data.clipboards = data.clipboards.filter(function (c) { return c.id !== id; });
+    if (!data.clipTombstones) data.clipTombstones = [];
+    if (!data.clipTombstones.some(function (t) { return t.id === id; })) {
+      data.clipTombstones.push({ id: id, at: Date.now() });
+    }
     save();
     renderClipboardList();
+    /* 删除后立即推送到云端（不走防抖），确保其他设备/悬浮面板同步删除 */
+    if (auth && apiConfigured()) pushData(false);
   }
 
   function renderClipboardPanel() {
@@ -1584,7 +1610,18 @@
           var serverAt = result.updated_at || 0;
           if (!auth.lastSync || serverAt > auth.lastSync) {
             suppressSync = true;
+            var localTomb = (data.clipTombstones || []).slice();
             data = result.data;
+            if (!Array.isArray(data.clipTombstones)) data.clipTombstones = [];
+            /* 合并墓碑：本机已删除 + 云端已删除，取并集，确保删除不「复活」 */
+            var seen = {}, merged = [];
+            localTomb.concat(data.clipTombstones).forEach(function (t) {
+              if (t && t.id && !seen[t.id]) { seen[t.id] = 1; merged.push({ id: t.id, at: t.at || 0 }); }
+            });
+            data.clipTombstones = merged;
+            var tombSet = {};
+            merged.forEach(function (t) { if (t.id) tombSet[t.id] = 1; });
+            data.clipboards = (data.clipboards || []).filter(function (c) { return c && !tombSet[c.id]; });
             pruneClipboards();
             auth.lastSync = serverAt;
             saveAuth();
