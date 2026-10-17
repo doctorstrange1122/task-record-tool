@@ -1,0 +1,29 @@
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  salt TEXT NOT NULL,
+  pass_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS user_data (
+  user_id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT NOT NULL,
+  window INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (key, window)
+);
