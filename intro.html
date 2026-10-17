@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>任务管理 + 跨设备剪贴板 · 使用介绍</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f5f5; color: #333; line-height: 1.7;
+    padding: 20px; max-width: 820px; margin: 0 auto;
+  }
+  h1 { text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px; }
+  h2 { color: #2c3e50; background: #ecf0f1; padding: 12px 18px; border-left: 5px solid #3498db; margin-top: 36px; border-radius: 4px; }
+  h3 { color: #34495e; margin-top: 20px; padding-left: 10px; border-left: 3px solid #95a5a6; }
+  p { margin: 10px 0; }
+  .lead { text-align: center; color: #7f8c8d; }
+  .badge { display: inline-block; background: #f39c12; color: #fff; padding: 2px 9px; border-radius: 3px; font-size: 12px; margin-left: 6px; }
+  .shot { width: 100%; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); margin: 14px 0; display: block; }
+  .cap { text-align: center; color: #95a5a6; font-size: 13px; margin: -6px 0 18px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; margin: 12px 0; }
+  th { background: #34495e; color: #fff; padding: 10px 12px; text-align: left; }
+  td { padding: 10px 12px; border-bottom: 1px solid #ecf0f1; }
+  ol, ul { margin: 10px 0; padding-left: 24px; }
+  li { margin: 6px 0; }
+  .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 15px; margin: 12px 0; border-radius: 4px; }
+  .tip { background: #d4edda; border-left: 4px solid #28a745; padding: 10px 15px; margin: 12px 0; border-radius: 4px; }
+  .dl { background: #fff; border-radius: 8px; padding: 16px 20px; margin: 14px 0; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .dl a { color: #2980b9; word-break: break-all; }
+  code { background: #ecf0f1; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>任务管理 + 跨设备剪贴板</h1>
+<p class="lead">一个网页即可用的轻量工具：多端任务记录 + 剪贴板实时同步。<br>安卓 / 鸿蒙有专属 App，iOS / 电脑可「添加到主屏幕」当 App 用。</p>
+
+<img class="shot" src="docs/01-web.png" alt="网页版主页">
+<p class="cap">网页版主页 · 任意浏览器打开即用</p>
+
+<h2>一、多端使用 <span class="badge">核心</span></h2>
+<table>
+  <tr><th>端</th><th>形态</th><th>说明</th></tr>
+  <tr><td>网页版</td><td>任意浏览器</td><td>无需安装，扫码即用</td></tr>
+  <tr><td>App（安卓 / 鸿蒙）</td><td>下载 APK 安装</td><td>系统闹钟提醒 + 悬浮球快捷入口</td></tr>
+  <tr><td>添加到主屏幕</td><td>iOS / 电脑 / 鸿蒙</td><td>把网页钉成图标，像原生 App</td></tr>
+</table>
+<p>所有端共享同一账号数据，<b>实时同步</b>——在 A 端复制，B 端立刻出现。</p>
+
+<img class="shot" src="docs/02-app.png" alt="App 主界面">
+<p class="cap">App 主界面 · 任务统计 / 分类 / 悬浮球</p>
+
+<h2>二、任务记录功能</h2>
+<ul>
+  <li>创建任务、分类管理、完成统计一目了然。</li>
+  <li>提醒由 <b>系统闹钟</b> 触发：关掉网页 / App 也能响（安卓 / 鸿蒙 App）。</li>
+  <li>网页版提醒需保持页面运行；要完整提醒请装 App。</li>
+</ul>
+<div class="tip">装 App 后，到点由系统闹钟直接提醒，无需保持页面打开、不依赖 Google 推送，国内网络可用。</div>
+
+<h2>三、跨设备剪贴板同步 <span class="badge">亮点</span></h2>
+<ul>
+  <li>复制一条，其他设备 <b>秒级出现</b>（WebSocket 实时推送 + 轮询兜底）。</li>
+  <li>上限 <b>200 条</b>，分页管理，不卡顿。</li>
+  <li>删除采用 <b>墓碑机制</b>：多端同步消失，不会再「复活」。</li>
+  <li>悬浮球一键展开，复制即存、点击即填。</li>
+</ul>
+
+<img class="shot" src="docs/03-float.png" alt="悬浮面板">
+<p class="cap">悬浮面板 · 剪贴板 / 任务双标签，随时展开</p>
+
+<h2>四、添加到主屏幕（当 App 用）</h2>
+<h3>iOS（Safari）</h3>
+<ol>
+  <li>打开网页 → 点底部「分享」按钮</li>
+  <li>下滑找到「添加到主屏幕」→ 命名后「添加」</li>
+</ol>
+<h3>电脑（Chrome / Edge）</h3>
+<ol>
+  <li>打开网页 → 点右上角 <code>⋮</code> 菜单</li>
+  <li>选「安装应用」或「更多工具 → 创建快捷方式（打开为窗口）」</li>
+</ol>
+<h3>鸿蒙 / 安卓浏览器</h3>
+<ul><li>浏览器菜单 → 「添加到主屏幕」即可。</li></ul>
+
+<div class="dl">
+  <h3 style="margin-top:0;border:0;padding:0;">下载与在线使用</h3>
+  <p>安卓 / 鸿蒙 App：<a href="https://doctorstrange1122.github.io/task-record-tool/task.apk">https://doctorstrange1122.github.io/task-record-tool/task.apk</a></p>
+  <p>加速下载（jsDelivr）：<a href="https://cdn.jsdelivr.net/gh/doctorstrange1122/task-record-tool@main/task.apk">cdn.jsdelivr.net/gh/doctorstrange1122/task-record-tool@main/task.apk</a></p>
+  <p>网页版：直接用浏览器访问上方仓库的 Pages 地址。</p>
+</div>
+
+<div class="note">提示：iOS / 电脑添加的是「网页版」入口；要系统闹钟提醒与悬浮球，请安装安卓 / 鸿蒙 App。</div>
+
+</body>
+</html>
