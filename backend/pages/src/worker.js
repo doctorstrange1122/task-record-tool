@@ -9,6 +9,10 @@
  *   PUT  /api/data      (Bearer token) {data, base} -> {ok, updated_at} | 409 冲突
  *   GET  /api/ws        (Bearer / ?token)           -> WebSocket 101      实时推送（转 Durable Object）
  *   POST /api/logout    (Bearer token)              -> {ok}
+ *   POST /api/feedback  (Bearer token) {content,image?} -> {ok}               提交反馈（任意登录用户）
+ *   GET  /api/feedback  (Bearer token, 管理员)        -> {ok,count,items}     反馈汇总
+ *   GET  /api/admin/users (Bearer token, 管理员)      -> {ok,count,users}     注册账号汇总
+ *   DELETE /api/admin/users (Bearer token, 管理员){username} -> {ok}          删除单个注册账号
  *   GET  /api/health                                 -> {ok}
  *
  * 安全：PBKDF2-SHA256(120k 次) 加盐哈希；会话令牌 256bit 随机，90 天滑动有效期；
@@ -82,6 +86,11 @@ function safeEqual(a, b) {
 
 function clientIp(request) {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+/** 管理员判定：仅账号 1473949160 具备管理权限 */
+function isAdmin(auth) {
+  return !!(auth && auth.username === '1473949160');
 }
 
 /** 按 IP 对认证接口限流 */
@@ -324,6 +333,100 @@ export default {
         const header = request.headers.get('Authorization') || '';
         const token = header.replace(/^Bearer\s+/i, '').toLowerCase();
         await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
+        return json({ ok: true }, 200, origin);
+      }
+
+      /* ---------- 提交反馈（任意登录用户） ---------- */
+      if (path === '/api/feedback' && request.method === 'POST') {
+        const auth = await authenticate(db, request);
+        if (!auth) return json({ ok: false, error: '请先登录后再提交反馈' }, 401, origin);
+        const body = await readBody(request);
+        if (body.error) return json({ ok: false, error: body.error }, 400, origin);
+        const { content, image } = body.value || {};
+        if (typeof content !== 'string' || !content.trim()) {
+          return json({ ok: false, error: '反馈内容不能为空' }, 400, origin);
+        }
+        if (content.trim().length > 2000) {
+          return json({ ok: false, error: '反馈内容过长（上限 2000 字）' }, 400, origin);
+        }
+        let img = null;
+        if (image != null) {
+          if (typeof image !== 'string' ||
+              !/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(image)) {
+            return json({ ok: false, error: '图片格式不正确' }, 400, origin);
+          }
+          if (image.length > 1400000) { /* 约 1MB 的 base64 */
+            return json({ ok: false, error: '图片过大（建议 ≤ 1MB）' }, 413, origin);
+          }
+          img = image;
+        }
+        await db.prepare(
+          'INSERT INTO feedback (user_id, username, content, image, status, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+        ).bind(auth.userId, auth.username, content.trim(), img, Date.now()).run();
+        return json({ ok: true }, 200, origin);
+      }
+
+      /* ---------- 查看反馈汇总（管理员） ---------- */
+      if (path === '/api/feedback' && request.method === 'GET') {
+        const auth = await authenticate(db, request);
+        if (!auth) return json({ ok: false, error: '登录已失效' }, 401, origin);
+        if (!isAdmin(auth)) return json({ ok: false, error: '无权限' }, 403, origin);
+        const rows = await db.prepare(
+          'SELECT id, username, content, image, status, created_at FROM feedback ORDER BY created_at DESC LIMIT 200'
+        ).all();
+        const items = (rows.results || []).map(function (r) {
+          return {
+            id: r.id,
+            username: r.username,
+            content: r.content,
+            image: r.image || null,
+            status: r.status,
+            created_at: r.created_at,
+          };
+        });
+        return json({ ok: true, count: items.length, items: items }, 200, origin);
+      }
+
+      /* ---------- 注册账号管理：汇总列表（管理员） ---------- */
+      if (path === '/api/admin/users' && request.method === 'GET') {
+        const auth = await authenticate(db, request);
+        if (!auth) return json({ ok: false, error: '登录已失效' }, 401, origin);
+        if (!isAdmin(auth)) return json({ ok: false, error: '无权限' }, 403, origin);
+        const total = await db.prepare('SELECT COUNT(*) AS c FROM users').first();
+        const rows = await db.prepare(
+          'SELECT username, nickname, created_at FROM users ORDER BY created_at DESC'
+        ).all();
+        return json({
+          ok: true,
+          count: total ? total.c : 0,
+          users: rows.results || [],
+        }, 200, origin);
+      }
+
+      /* ---------- 注册账号管理：删除单个账号（管理员） ---------- */
+      if (path === '/api/admin/users' && request.method === 'DELETE') {
+        const auth = await authenticate(db, request);
+        if (!auth) return json({ ok: false, error: '登录已失效' }, 401, origin);
+        if (!isAdmin(auth)) return json({ ok: false, error: '无权限' }, 403, origin);
+        const body = await readBody(request);
+        if (body.error) return json({ ok: false, error: body.error }, 400, origin);
+        const { username } = body.value || {};
+        if (!validUsername(username)) {
+          return json({ ok: false, error: '账号格式不正确' }, 400, origin);
+        }
+        if (username === auth.username) {
+          return json({ ok: false, error: '不能删除管理员自身' }, 400, origin);
+        }
+        const u = await db.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
+        if (u) {
+          const uid = u.id;
+          await db.batch([
+            db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(uid),
+            db.prepare('DELETE FROM user_data WHERE user_id = ?').bind(uid),
+            db.prepare('DELETE FROM feedback WHERE user_id = ?').bind(uid),
+            db.prepare('DELETE FROM users WHERE id = ?').bind(uid),
+          ]);
+        }
         return json({ ok: true }, 200, origin);
       }
 
